@@ -504,7 +504,7 @@ class DeepSeekMonitor:
 
     def run(self):
         """
-        运行监控主循环
+        运行监控主循环（持续刷新模式）
         """
         logger.info("开始 DeepSeek 监控...")
 
@@ -513,10 +513,15 @@ class DeepSeekMonitor:
             logger.error("登录失败，退出程序")
             return
 
-        logger.info("监控已启动，每秒检查一次对话列表...")
+        logger.info("监控已启动，持续刷新页面检查新对话...")
 
         try:
             while True:
+                # 刷新页面获取最新对话列表
+                logger.debug("刷新页面...")
+                self.driver.refresh()
+                time.sleep(3)  # 等待页面加载
+
                 # 获取当前对话列表
                 current_conversations = self._get_conversations()
 
@@ -567,7 +572,7 @@ class DeepSeekMonitor:
                 # 更新上一秒的对话列表
                 self.last_conversations = current_conversations.copy()
 
-                # 等待一秒
+                # 短暂等待后继续刷新
                 time.sleep(1)
 
         except KeyboardInterrupt:
