@@ -1,0 +1,7 @@
+# 敏感配置文件，请勿提交到版本库
+config.json
+__pycache__/
+*.pyc
+.venv/
+browser_profile/
+deepseek_monitor.log
