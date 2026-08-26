@@ -619,6 +619,7 @@ class DeepSeekMonitor:
                             logger.info("未检测到新对话")
 
                     # 更新上一秒的对话列表（存储URL ID）
+                    current_url_ids = set(url_id for _, url_id in current_conversations)
                     self.last_conversations = current_url_ids
                     reconnect_count = 0  # 重置重连计数
 
