@@ -427,7 +427,7 @@ class DeepSeekMonitor:
 
     def _get_latest_message(self) -> Optional[str]:
         """
-        获取最后一条用户消息
+        获取最后一条用户消息（寻找包含@的命令）
 
         Returns:
             消息文本，如果找不到则返回 None
@@ -439,29 +439,39 @@ class DeepSeekMonitor:
             # 获取页面所有文本
             body_text = self.driver.find_element(By.TAG_NAME, "body").text
 
-            # 尝试查找消息元素
-            messages = self.driver.find_elements(By.CSS_SELECTOR, '[class*="message"], [class*="bubble"], [class*="text"]')
+            if not body_text:
+                logger.debug("页面文本为空")
+                return None
 
-            if messages:
-                # 从后往前找第一条用户消息
-                for msg in reversed(messages):
-                    try:
-                        text = msg.text.strip()
-                        if text and len(text) > 0:
-                            logger.debug(f"找到消息: {text[:50]}...")
-                            return text
-                    except Exception:
-                        continue
+            # 方法1：从body文本中查找以@开头的消息
+            lines = body_text.split('\n')
+            for line in reversed(lines):
+                line = line.strip()
+                # 查找包含@的命令（用户发送的消息）
+                if line.startswith('@') and len(line) > 1:
+                    logger.debug(f"找到@命令: {line}")
+                    return line
 
-            # 如果没有找到结构化元素，从页面文本中提取
-            if body_text:
-                lines = body_text.split('\n')
-                for line in reversed(lines):
-                    line = line.strip()
-                    if line and len(line) > 0:
-                        return line
+            # 方法2：查找包含@的命令（可能在文本中间）
+            for line in reversed(lines):
+                line = line.strip()
+                # 跳过明显的非消息内容
+                if not line:
+                    continue
+                if len(line) < 3 or len(line) > 200:
+                    continue
+                # 排除AI回复的关键词
+                exclude_words = ['Thought', 'DeepThink', 'Search', 'AI-generated',
+                                'for reference only', 'Continue', 'Download',
+                                'Copy', 'Edit', 'Regenerate']
+                if any(word in line for word in exclude_words):
+                    continue
+                # 检查是否包含@命令
+                if '@' in line and ('command' in line.lower() or 'bash' in line.lower() or '/' in line or '-' in line):
+                    logger.debug(f"找到可能的@命令: {line}")
+                    return line
 
-            logger.debug("未找到消息")
+            logger.debug("未找到@命令")
             return None
 
         except Exception as e:
