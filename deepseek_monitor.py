@@ -94,7 +94,7 @@ class DeepSeekMonitor:
                 shell=True,
                 capture_output=True
             )
-            time.sleep(2)  # 等待进程完全退出
+              # 等待进程完全退出
             logger.info("Chrome 进程清理完成")
         except Exception as e:
             logger.warning(f"清理进程时出错: {e}")
@@ -143,7 +143,7 @@ class DeepSeekMonitor:
             self.driver.get(LOGIN_URL)
 
             # 等待页面加载
-            time.sleep(3)
+            
 
             # 检查是否已经登录
             if self._is_logged_in():
@@ -229,7 +229,7 @@ class DeepSeekMonitor:
             )
 
             # 额外等待页面加载
-            time.sleep(3)
+            
 
             logger.info("登录成功！")
             return True
@@ -262,7 +262,7 @@ class DeepSeekMonitor:
                         if elem.is_displayed():
                             elem.click()
                             logger.debug("已点击密码登录按钮")
-                            time.sleep(1)
+                            
                             return True
                 except Exception:
                     continue
@@ -279,7 +279,7 @@ class DeepSeekMonitor:
                             parent = parent.parent
                             if parent and parent.is_displayed():
                                 parent.click()
-                                time.sleep(1)
+                                
                                 return True
                     except Exception:
                         continue
@@ -340,7 +340,7 @@ class DeepSeekMonitor:
         conversations = set()
         try:
             # 等待页面完全加载
-            time.sleep(2)
+            
 
             # 获取页面源代码，使用更精确的选择器
             # 对话链接：class="_546d736" 且包含 href="/a/chat/s/"
@@ -421,7 +421,7 @@ class DeepSeekMonitor:
         """
         try:
             # 等待页面稳定
-            time.sleep(1)
+            
 
             # 查找所有可点击元素
             clickables = self.driver.find_elements(By.CSS_SELECTOR, '[role="button"], button, a, [class*="item"], li')
@@ -433,7 +433,7 @@ class DeepSeekMonitor:
                         elem.click()
                         logger.info(f"已点击对话: {title}")
                         # 等待页面加载
-                        time.sleep(2)
+                        
                         return True
                 except (NoSuchElementException, StaleElementReferenceException):
                     continue
@@ -454,7 +454,7 @@ class DeepSeekMonitor:
         """
         try:
             # 等待页面加载
-            time.sleep(1)
+            
 
             # 获取页面所有文本
             body_text = self.driver.find_element(By.TAG_NAME, "body").text
@@ -544,11 +544,9 @@ class DeepSeekMonitor:
 
             # 输入回复内容
             input_box.send_keys(response_text)
-            time.sleep(0.5)  # 等待内容输入完成
 
             # 发送回车键
             input_box.send_keys(Keys.ENTER)
-            time.sleep(1)  # 等待消息发送完成
 
             logger.info("已发送回复")
             return True
@@ -579,7 +577,7 @@ class DeepSeekMonitor:
                     # 刷新页面获取最新对话列表
                     logger.debug("刷新页面...")
                     self.driver.refresh()
-                    time.sleep(3)  # 等待页面加载
+                      # 等待页面加载
 
                     # 获取当前对话列表
                     current_conversations = self._get_conversations()
@@ -650,7 +648,7 @@ class DeepSeekMonitor:
                                     pass
                             # 清理残留进程
                             self._kill_stale_processes()
-                            time.sleep(2)
+                            
                             if self.login():
                                 logger.info("重新登录成功")
                                 reconnect_count = 0
@@ -660,7 +658,7 @@ class DeepSeekMonitor:
                         logger.warning(f"监控过程中出错: {e}")
 
                 # 短暂等待后继续
-                time.sleep(1)
+                
 
         except KeyboardInterrupt:
             logger.info("收到中断信号，正在关闭...")
