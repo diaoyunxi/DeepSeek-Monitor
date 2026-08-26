@@ -94,7 +94,6 @@ class DeepSeekMonitor:
                 shell=True,
                 capture_output=True
             )
-              # 等待进程完全退出
             logger.info("Chrome 进程清理完成")
         except Exception as e:
             logger.warning(f"清理进程时出错: {e}")
@@ -577,7 +576,6 @@ class DeepSeekMonitor:
                     # 刷新页面获取最新对话列表
                     logger.debug("刷新页面...")
                     self.driver.refresh()
-                      # 等待页面加载
 
                     # 获取当前对话列表
                     current_conversations = self._get_conversations()
