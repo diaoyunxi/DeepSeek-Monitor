@@ -319,46 +319,43 @@ class DeepSeekMonitor:
         """
         conversations = set()
         try:
-            # 等待页面加载
-            time.sleep(1)
+            # 等待页面完全加载
+            time.sleep(2)
 
             # 获取页面文本内容
             body_text = self.driver.find_element(By.TAG_NAME, "body").text
 
-            # 尝试查找对话列表元素
-            # DeepSeek 的对话列表通常在左侧边栏
-            sidebar = self.driver.find_elements(By.CSS_SELECTOR, "[class*='sidebar'], [class*='nav'], [class*='menu']")
+            if not body_text:
+                logger.warning("页面文本为空")
+                return conversations
 
-            if sidebar:
-                # 从侧边栏获取对话列表
-                for elem in sidebar:
-                    lines = elem.text.strip().split('\n')
-                    for line in lines:
-                        line = line.strip()
-                        if line and len(line) > 0:
-                            conversations.add(line)
+            # 按行分割
+            lines = body_text.split('\n')
 
-            # 如果没找到侧边栏，尝试其他方式
-            if not conversations:
-                # 尝试查找所有可点击的列表项
-                items = self.driver.find_elements(By.CSS_SELECTOR, '[role="listitem"], [class*="item"], li')
-                for item in items:
-                    text = item.text.strip()
-                    if text and len(text) > 0:
-                        conversations.add(text)
+            # 过滤出有效的对话标题
+            exclude_words = ['发送', '登录', '密码', '验证码', 'Terms', 'Privacy',
+                           'New chat', 'Start chatting', 'Instant', 'Expert',
+                           'Vision', 'DeepThink', 'Search', 'AI-generated',
+                           'for reference only', 'Continue', 'Contact us']
 
-            # 从页面文本中提取可能的对话标题
-            if not conversations and body_text:
-                lines = body_text.split('\n')
-                for line in lines:
-                    line = line.strip()
-                    # 过滤掉明显的非对话内容
-                    if line and len(line) > 2 and len(line) < 100:
-                        exclude_words = ['发送', '登录', '密码', '验证码', 'Terms', 'Privacy']
-                        if not any(word in line for word in exclude_words):
-                            conversations.add(line)
+            for line in lines:
+                line = line.strip()
+                # 过滤条件
+                if not line:
+                    continue
+                if len(line) < 2 or len(line) > 100:
+                    continue
+                if any(word in line for word in exclude_words):
+                    continue
+                # 排除明显的非对话内容
+                if line.startswith('@') or line.startswith('#'):
+                    continue
+                if 'http' in line.lower():
+                    continue
 
-            logger.debug(f"当前对话数量: {len(conversations)}")
+                conversations.add(line)
+
+            logger.debug(f"从页面提取到 {len(conversations)} 个对话标题")
             return conversations
 
         except Exception as e:
@@ -515,64 +512,89 @@ class DeepSeekMonitor:
 
         logger.info("监控已启动，持续刷新页面检查新对话...")
 
+        reconnect_count = 0
+        max_reconnect = 5
+
         try:
             while True:
-                # 刷新页面获取最新对话列表
-                logger.debug("刷新页面...")
-                self.driver.refresh()
-                time.sleep(3)  # 等待页面加载
+                try:
+                    # 刷新页面获取最新对话列表
+                    logger.debug("刷新页面...")
+                    self.driver.refresh()
+                    time.sleep(3)  # 等待页面加载
 
-                # 获取当前对话列表
-                current_conversations = self._get_conversations()
+                    # 获取当前对话列表
+                    current_conversations = self._get_conversations()
 
-                if self.is_first_run:
-                    # 首次运行：缓存所有现有对话，不处理
-                    logger.info(f"首次运行，缓存 {len(current_conversations)} 个现有对话")
-                    self.last_conversations = current_conversations.copy()
-                    self.processed_conversations = current_conversations.copy()
-                    self.is_first_run = False
-                else:
-                    # 后续运行：只处理新增的对话
-                    new_conversations = current_conversations - self.last_conversations - self.processed_conversations
-
-                    if new_conversations:
-                        logger.info(f"发现 {len(new_conversations)} 个新对话: {new_conversations}")
-
-                        for conv_title in list(new_conversations)[:3]:  # 限制处理最多3个新对话
-                            # 点击新对话
-                            if self._click_conversation(conv_title):
-                                # 获取最新消息
-                                message = self._get_latest_message()
-
-                                if message and message.startswith("@"):
-                                    # 提取命令
-                                    command = message[1:].strip()  # 去掉 @ 符号
-                                    logger.info(f"检测到 @ 命令: {command}")
-
-                                    # 执行命令
-                                    stdout, stderr, returncode = self._execute_bash_command(command)
-
-                                    # 构造回复内容
-                                    if returncode == 0:
-                                        response = f"✅ 命令执行成功\n\n```\n{stdout}\n```"
-                                    else:
-                                        response = f"❌ 命令执行失败\n\n错误: {stderr if stderr else '未知错误'}"
-
-                                    # 发送回复
-                                    self._send_response(response)
-                                    logger.info(f"已处理并回复对话: {conv_title}")
-                                else:
-                                    logger.debug(f"对话 '{conv_title}' 的消息不以 @ 开头，跳过")
-
-                                # 处理完立即标记为已处理，避免重复检查
-                                self.processed_conversations.add(conv_title)
+                    if self.is_first_run:
+                        # 首次运行：缓存所有现有对话，不处理
+                        logger.info(f"首次运行，缓存 {len(current_conversations)} 个现有对话")
+                        self.last_conversations = current_conversations.copy()
+                        self.processed_conversations = current_conversations.copy()
+                        self.is_first_run = False
                     else:
-                        logger.debug("未检测到新对话")
+                        # 后续运行：只处理新增的对话
+                        new_conversations = current_conversations - self.last_conversations - self.processed_conversations
 
-                # 更新上一秒的对话列表
-                self.last_conversations = current_conversations.copy()
+                        if new_conversations:
+                            logger.info(f"发现 {len(new_conversations)} 个新对话: {new_conversations}")
 
-                # 短暂等待后继续刷新
+                            for conv_title in list(new_conversations)[:3]:  # 限制处理最多3个新对话
+                                # 点击新对话
+                                if self._click_conversation(conv_title):
+                                    # 获取最新消息
+                                    message = self._get_latest_message()
+
+                                    if message and message.startswith("@"):
+                                        # 提取命令
+                                        command = message[1:].strip()  # 去掉 @ 符号
+                                        logger.info(f"检测到 @ 命令: {command}")
+
+                                        # 执行命令
+                                        stdout, stderr, returncode = self._execute_bash_command(command)
+
+                                        # 构造回复内容
+                                        if returncode == 0:
+                                            response = f"✅ 命令执行成功\n\n```\n{stdout}\n```"
+                                        else:
+                                            response = f"❌ 命令执行失败\n\n错误: {stderr if stderr else '未知错误'}"
+
+                                        # 发送回复
+                                        self._send_response(response)
+                                        logger.info(f"已处理并回复对话: {conv_title}")
+                                    else:
+                                        logger.debug(f"对话 '{conv_title}' 的消息不以 @ 开头，跳过")
+
+                                    # 处理完立即标记为已处理，避免重复检查
+                                    self.processed_conversations.add(conv_title)
+                        else:
+                            logger.debug("未检测到新对话")
+
+                    # 更新上一秒的对话列表
+                    self.last_conversations = current_conversations.copy()
+                    reconnect_count = 0  # 重置重连计数
+
+                except Exception as e:
+                    # 处理浏览器会话失效等错误
+                    error_msg = str(e)
+                    if "invalid session id" in error_msg or "session deleted" in error_msg:
+                        logger.warning(f"浏览器会话失效，尝试重新登录... ({reconnect_count + 1}/{max_reconnect})")
+                        reconnect_count += 1
+                        if reconnect_count >= max_reconnect:
+                            logger.error("重连次数过多，退出程序")
+                            break
+                        try:
+                            self.driver.quit()
+                            time.sleep(2)
+                            if self.login():
+                                logger.info("重新登录成功")
+                                reconnect_count = 0
+                        except Exception as reconnect_err:
+                            logger.error(f"重新登录失败: {reconnect_err}")
+                    else:
+                        logger.warning(f"监控过程中出错: {e}")
+
+                # 短暂等待后继续
                 time.sleep(1)
 
         except KeyboardInterrupt:
