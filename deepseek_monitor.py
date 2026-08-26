@@ -604,6 +604,7 @@ class DeepSeekMonitor:
                                             response = stdout.strip()
                                         else:
                                             response = f"执行失败: {stderr.strip() if stderr else '未知错误'}"
+                                        logger.info(f"执行结果预览: {response[:100]}{'...' if len(response) > 100 else ''}")
 
                                         # 发送回复
                                         send_result = self._send_response(response)
