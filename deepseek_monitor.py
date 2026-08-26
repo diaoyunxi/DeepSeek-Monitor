@@ -322,38 +322,65 @@ class DeepSeekMonitor:
             # 等待页面完全加载
             time.sleep(2)
 
-            # 获取页面文本内容
-            body_text = self.driver.find_element(By.TAG_NAME, "body").text
+            # 获取页面源代码，使用更精确的选择器
+            # 对话链接：class="_546d736" 且包含 href="/a/chat/s/"
+            conversation_links = self.driver.find_elements(
+                By.CSS_SELECTOR,
+                "a[href*='/a/chat/s/']"
+            )
 
-            if not body_text:
-                logger.warning("页面文本为空")
-                return conversations
+            if conversation_links:
+                for link in conversation_links:
+                    try:
+                        # 获取对话标题（在 class="c08e6e93" 的 div 中）
+                        title_elem = link.find_element(By.CSS_SELECTOR, "div.c08e6e93")
+                        title = title_elem.text.strip()
+                        if title and len(title) > 0:
+                            conversations.add(title)
+                    except Exception:
+                        # 如果找不到标题元素，跳过
+                        continue
+            else:
+                # 备用方案：从页面文本中提取
+                body_text = self.driver.find_element(By.TAG_NAME, "body").text
 
-            # 按行分割
-            lines = body_text.split('\n')
+                if body_text:
+                    # 按行分割
+                    lines = body_text.split('\n')
 
-            # 过滤出有效的对话标题
-            exclude_words = ['发送', '登录', '密码', '验证码', 'Terms', 'Privacy',
-                           'New chat', 'Start chatting', 'Instant', 'Expert',
-                           'Vision', 'DeepThink', 'Search', 'AI-generated',
-                           'for reference only', 'Continue', 'Contact us']
+                    # 过滤出有效的对话标题
+                    exclude_words = [
+                        '发送', '登录', '密码', '验证码', 'Terms', 'Privacy',
+                        'New chat', 'Start chatting', 'Instant', 'Expert',
+                        'Vision', 'DeepThink', 'Search', 'AI-generated',
+                        'for reference only', 'Continue', 'Contact us',
+                        'Today', 'Yesterday', '7 Days', '30 Days',
+                        '14 Days', '21 Days', 'Last 7 days', 'Last 30 days'
+                    ]
 
-            for line in lines:
-                line = line.strip()
-                # 过滤条件
-                if not line:
-                    continue
-                if len(line) < 2 or len(line) > 100:
-                    continue
-                if any(word in line for word in exclude_words):
-                    continue
-                # 排除明显的非对话内容
-                if line.startswith('@') or line.startswith('#'):
-                    continue
-                if 'http' in line.lower():
-                    continue
+                    # 过滤年份开头的内容（如 "2026-07", "2026-06"）
+                    import re
+                    year_pattern = re.compile(r'^\d{4}[-/]\d{2}')
 
-                conversations.add(line)
+                    for line in lines:
+                        line = line.strip()
+                        # 过滤条件
+                        if not line:
+                            continue
+                        if len(line) < 2 or len(line) > 100:
+                            continue
+                        if any(word in line for word in exclude_words):
+                            continue
+                        # 排除明显的非对话内容
+                        if line.startswith('@') or line.startswith('#'):
+                            continue
+                        if 'http' in line.lower():
+                            continue
+                        # 排除年份标签
+                        if year_pattern.match(line):
+                            continue
+
+                        conversations.add(line)
 
             logger.debug(f"从页面提取到 {len(conversations)} 个对话标题")
             return conversations
