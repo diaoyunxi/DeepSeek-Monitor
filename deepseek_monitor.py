@@ -82,6 +82,23 @@ class DeepSeekMonitor:
             logger.error(f"配置文件 JSON 解析错误: {e}")
             raise
 
+    def _kill_stale_processes(self):
+        """
+        杀死所有残留的 Chrome 和 ChromeDriver 进程
+        """
+        try:
+            logger.info("正在清理残留的 Chrome 进程...")
+            # 杀死所有 chrome 和 chromedriver 进程
+            subprocess.run(
+                "pkill -9 -f 'chrome|chromedriver' 2>/dev/null || true",
+                shell=True,
+                capture_output=True
+            )
+            time.sleep(2)  # 等待进程完全退出
+            logger.info("Chrome 进程清理完成")
+        except Exception as e:
+            logger.warning(f"清理进程时出错: {e}")
+
     def _setup_driver(self) -> webdriver.Chrome:
         """
         配置并创建 Chrome 浏览器驱动
@@ -118,6 +135,9 @@ class DeepSeekMonitor:
             登录是否成功
         """
         try:
+            # 先清理可能存在的旧进程
+            self._kill_stale_processes()
+
             self.driver = self._setup_driver()
             logger.info("正在打开 DeepSeek 登录页面...")
             self.driver.get(LOGIN_URL)
@@ -621,14 +641,20 @@ class DeepSeekMonitor:
                 except Exception as e:
                     # 处理浏览器会话失效等错误
                     error_msg = str(e)
-                    if "invalid session id" in error_msg or "session deleted" in error_msg:
+                    if "invalid session id" in error_msg or "session deleted" in error_msg or "session not created" in error_msg:
                         logger.warning(f"浏览器会话失效，尝试重新登录... ({reconnect_count + 1}/{max_reconnect})")
                         reconnect_count += 1
                         if reconnect_count >= max_reconnect:
                             logger.error("重连次数过多，退出程序")
                             break
                         try:
-                            self.driver.quit()
+                            if self.driver:
+                                try:
+                                    self.driver.quit()
+                                except:
+                                    pass
+                            # 清理残留进程
+                            self._kill_stale_processes()
                             time.sleep(2)
                             if self.login():
                                 logger.info("重新登录成功")
