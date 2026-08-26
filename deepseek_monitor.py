@@ -116,7 +116,6 @@ class DeepSeekMonitor:
         # 保存浏览器数据目录
         if self.profile_dir:
             chrome_options.add_argument(f"--user-data-dir={self.profile_dir}")
-            logger.debug(f"使用浏览器数据目录: {self.profile_dir}")
 
         # 创建 WebDriver 实例，使用已安装的 ChromeDriver
         service = Service(executable_path=self.chrome_driver_path)
@@ -182,23 +181,19 @@ class DeepSeekMonitor:
             login_type = self.config.get("login_type", "code")  # "password" 或 "code"
 
             # 等待登录表单加载
-            logger.debug("等待登录表单加载...")
             WebDriverWait(self.driver, 15).until(
                 EC.presence_of_element_located((By.TAG_NAME, "input"))
             )
 
             # 如果是密码登录，先点击"密码登录"按钮
             if login_type == "password":
-                logger.debug("检测到密码登录模式，正在点击密码登录按钮...")
                 self._click_password_login()
 
             # 获取所有输入框
             inputs = self.driver.find_elements(By.TAG_NAME, "input")
-            logger.debug(f"找到 {len(inputs)} 个输入框")
 
             # 填写手机号
             if len(inputs) >= 1:
-                logger.debug("正在输入手机号...")
                 inputs[0].clear()
                 inputs[0].send_keys(phone)
 
@@ -206,22 +201,18 @@ class DeepSeekMonitor:
             if login_type == "password":
                 password = self.config.get("password", "")
                 if len(inputs) >= 2:
-                    logger.debug("正在输入密码...")
                     inputs[1].clear()
                     inputs[1].send_keys(password)
             else:
                 code = self.config.get("code", "")
                 if len(inputs) >= 2:
-                    logger.debug("正在输入验证码...")
                     inputs[1].clear()
                     inputs[1].send_keys(code)
 
             # 查找并点击登录按钮
-            logger.debug("正在点击登录按钮...")
             self._click_login_button()
 
             # 等待登录完成
-            logger.debug("等待登录完成...")
             WebDriverWait(self.driver, 30).until(
                 lambda d: "sign_in" not in d.current_url.lower()
             )
@@ -259,7 +250,6 @@ class DeepSeekMonitor:
                     for elem in elements:
                         if elem.is_displayed():
                             elem.click()
-                            logger.debug("已点击密码登录按钮")
                             
                             return True
                 except Exception:
@@ -308,7 +298,6 @@ class DeepSeekMonitor:
                             text = elem.text.strip()
                             if "log in" in text.lower() or "登录" in text:
                                 elem.click()
-                                logger.debug(f"已点击登录按钮: {text}")
                                 return True
                 except Exception:
                     continue
@@ -318,7 +307,6 @@ class DeepSeekMonitor:
             for btn in reversed(buttons):
                 if btn.is_displayed() and btn.is_enabled():
                     btn.click()
-                    logger.debug("已点击最后一个可用按钮")
                     return True
 
             logger.warning("未找到登录按钮")
@@ -400,7 +388,6 @@ class DeepSeekMonitor:
 
                         conversations.add(line)
 
-            logger.debug(f"从页面提取到 {len(conversations)} 个对话标题")
             return conversations
 
         except Exception as e:
@@ -458,7 +445,6 @@ class DeepSeekMonitor:
             body_text = self.driver.find_element(By.TAG_NAME, "body").text
 
             if not body_text:
-                logger.debug("页面文本为空")
                 return None
 
             # 方法1：从body文本中查找以@开头的消息
@@ -467,7 +453,6 @@ class DeepSeekMonitor:
                 line = line.strip()
                 # 查找包含@的命令（用户发送的消息）
                 if line.startswith('@') and len(line) > 1:
-                    logger.debug(f"找到@命令: {line}")
                     return line
 
             # 方法2：查找包含@的命令（可能在文本中间）
@@ -486,10 +471,8 @@ class DeepSeekMonitor:
                     continue
                 # 检查是否包含@命令
                 if '@' in line and ('command' in line.lower() or 'bash' in line.lower() or '/' in line or '-' in line):
-                    logger.debug(f"找到可能的@命令: {line}")
                     return line
 
-            logger.debug("未找到@命令")
             return None
 
         except Exception as e:
@@ -515,7 +498,6 @@ class DeepSeekMonitor:
                 text=True,
                 timeout=60  # 60秒超时
             )
-            logger.debug(f"命令执行完成，返回码: {result.returncode}")
             return result.stdout, result.stderr, result.returncode
         except subprocess.TimeoutExpired:
             logger.error(f"命令执行超时: {command}")
@@ -573,7 +555,6 @@ class DeepSeekMonitor:
             while True:
                 try:
                     # 刷新页面获取最新对话列表
-                    logger.debug("刷新页面...")
                     self.driver.refresh()
 
                     # 获取当前对话列表
@@ -616,13 +597,10 @@ class DeepSeekMonitor:
                                         self._send_response(response)
                                         logger.info(f"已处理并回复对话: {conv_title}")
                                     else:
-                                        logger.debug(f"对话 '{conv_title}' 的消息不以 @ 开头，跳过")
 
                                     # 处理完立即标记为已处理，避免重复检查
                                     self.processed_conversations.add(conv_title)
-                                    logger.debug(f"已标记对话为已处理: {conv_title}")
                         else:
-                            logger.debug("未检测到新对话")
 
                     # 更新上一秒的对话列表
                     self.last_conversations = current_conversations.copy()
