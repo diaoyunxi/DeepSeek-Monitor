@@ -10,7 +10,6 @@ DeepSeek 对话监控与命令执行工具
 import json
 import logging
 import subprocess
-import time
 from typing import Optional
 
 from selenium import webdriver
