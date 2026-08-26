@@ -498,9 +498,9 @@ class DeepSeekMonitor:
         """
         logger.info(f"执行命令: {command}")
         try:
+            # 使用 bash -c 执行，确保参数正确传递
             result = subprocess.run(
-                command,
-                shell=True,
+                ['bash', '-c', command],
                 capture_output=True,
                 text=True,
                 timeout=60  # 60秒超时
