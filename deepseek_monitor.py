@@ -508,7 +508,7 @@ class DeepSeekMonitor:
 
     def _send_response(self, response_text: str) -> bool:
         """
-        发送回复消息
+        发送回复消息（使用JavaScript避免换行符被误解为回车）
 
         Args:
             response_text: 回复内容
@@ -522,9 +522,15 @@ class DeepSeekMonitor:
                 EC.presence_of_element_located((By.TAG_NAME, "textarea"))
             )
 
-            # 清空并输入回复内容
-            input_box.clear()
-            input_box.send_keys(response_text)
+            # 使用JavaScript直接设置值，避免send_keys将换行符转为回车
+            self.driver.execute_script("""
+                var textarea = document.querySelector('textarea');
+                if (textarea) {
+                    textarea.value = arguments[0];
+                    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                    textarea.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            """, response_text)
 
             # 发送消息（模拟回车）
             input_box.send_keys(Keys.ENTER)
