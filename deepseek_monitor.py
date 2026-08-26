@@ -542,11 +542,7 @@ class DeepSeekMonitor:
                 EC.visibility_of_element_located((By.TAG_NAME, "textarea"))
             )
 
-            # 清空输入框
-            input_box.clear()
-            time.sleep(0.5)  # 等待清空完成
-
-            # 使用 send_keys 输入内容
+            # 输入回复内容
             input_box.send_keys(response_text)
             time.sleep(0.5)  # 等待内容输入完成
 
