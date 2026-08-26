@@ -528,7 +528,7 @@ class DeepSeekMonitor:
 
     def _send_response(self, response_text: str) -> bool:
         """
-        发送回复消息（使用JavaScript避免换行符被误解为回车）
+        发送回复消息
 
         Args:
             response_text: 回复内容
@@ -537,23 +537,22 @@ class DeepSeekMonitor:
             发送是否成功
         """
         try:
-            # 等待输入框加载
+            # 等待输入框加载并可见
             input_box = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.TAG_NAME, "textarea"))
+                EC.visibility_of_element_located((By.TAG_NAME, "textarea"))
             )
 
-            # 使用JavaScript直接设置值，避免send_keys将换行符转为回车
-            self.driver.execute_script("""
-                var textarea = document.querySelector('textarea');
-                if (textarea) {
-                    textarea.value = arguments[0];
-                    textarea.dispatchEvent(new Event('input', { bubbles: true }));
-                    textarea.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-            """, response_text)
+            # 清空输入框
+            input_box.clear()
+            time.sleep(0.5)  # 等待清空完成
 
-            # 发送消息（模拟回车）
+            # 使用 send_keys 输入内容
+            input_box.send_keys(response_text)
+            time.sleep(0.5)  # 等待内容输入完成
+
+            # 发送回车键
             input_box.send_keys(Keys.ENTER)
+            time.sleep(1)  # 等待消息发送完成
 
             logger.info("已发送回复")
             return True
