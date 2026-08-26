@@ -597,10 +597,11 @@ class DeepSeekMonitor:
                                         self._send_response(response)
                                         logger.info(f"已处理并回复对话: {conv_title}")
                                     else:
-
+                                        pass
                                     # 处理完立即标记为已处理，避免重复检查
                                     self.processed_conversations.add(conv_title)
                         else:
+                            pass
 
                     # 更新上一秒的对话列表
                     self.last_conversations = current_conversations.copy()
