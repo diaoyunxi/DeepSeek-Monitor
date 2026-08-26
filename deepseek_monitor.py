@@ -52,9 +52,10 @@ class DeepSeekMonitor:
         """
         self.config = self._load_config(config_path)
         self.driver: Optional[webdriver.Chrome] = None
-        self.last_conversations: set = set()  # 上一秒的对话集合
-        self.processed_conversations: set = set()  # 已处理过的对话集合
+        self.last_conversations: set = set()  # 上一秒的对话集合（存储url_id）
+        self.processed_conversations: set = set()  # 已处理过的对话集合（存储url_id）
         self.is_first_run: bool = True  # 是否首次运行
+        self.conversation_titles: dict = {}  # url_id -> title 的映射
         self.profile_dir = self.config.get("profile_dir", "./browser_profile")
         self.chrome_driver_path = "/usr/local/bin/chromedriver"
 
@@ -316,17 +317,17 @@ class DeepSeekMonitor:
             logger.error(f"点击登录按钮时出错: {e}")
             return False
 
-    def _get_conversations(self) -> set:
+    def _get_conversations(self) -> list:
         """
         获取当前对话列表
 
         Returns:
-            对话标题集合
+            [(标题, url_id)] 列表
         """
-        conversations = set()
+        conversations = []
         try:
             # 等待页面完全加载
-            
+
 
             # 获取页面源代码，使用更精确的选择器
             # 对话链接：class="_546d736" 且包含 href="/a/chat/s/"
@@ -341,8 +342,14 @@ class DeepSeekMonitor:
                         # 获取对话标题（在 class="c08e6e93" 的 div 中）
                         title_elem = link.find_element(By.CSS_SELECTOR, "div.c08e6e93")
                         title = title_elem.text.strip()
-                        if title and len(title) > 0:
-                            conversations.add(title)
+                        # 提取URL中的对话ID
+                        href = link.get_attribute('href')
+                        url_id = href.split('/')[-1] if href else ''
+
+                        if title and len(title) > 0 and url_id:
+                            conversations.append((title, url_id))
+                            # 更新标题映射
+                            self.conversation_titles[url_id] = title
                     except Exception:
                         # 如果找不到标题元素，跳过
                         continue
@@ -386,7 +393,7 @@ class DeepSeekMonitor:
                         if year_pattern.match(line):
                             continue
 
-                        conversations.add(line)
+                        conversations.append((line, line))  # 备用方案使用标题作为ID
 
             return conversations
 
@@ -564,17 +571,20 @@ class DeepSeekMonitor:
                     if self.is_first_run:
                         # 首次运行：缓存所有现有对话，不处理
                         logger.info(f"首次运行，缓存 {len(current_conversations)} 个现有对话")
-                        self.last_conversations = current_conversations.copy()
-                        self.processed_conversations = current_conversations.copy()
+                        self.last_conversations = set(url_id for _, url_id in current_conversations)
+                        self.processed_conversations = set(url_id for _, url_id in current_conversations)
                         self.is_first_run = False
                     else:
-                        # 后续运行：只处理新增的对话
-                        new_conversations = current_conversations - self.last_conversations - self.processed_conversations
+                        # 后续运行：只处理新增的对话（基于URL ID）
+                        current_url_ids = set(url_id for _, url_id in current_conversations)
+                        new_url_ids = current_url_ids - self.last_conversations - self.processed_conversations
 
-                        if new_conversations:
-                            logger.info(f"发现 {len(new_conversations)} 个新对话: {new_conversations}")
+                        if new_url_ids:
+                            # 找到新对话的标题
+                            new_conversations = [(title, url_id) for title, url_id in current_conversations if url_id in new_url_ids]
+                            logger.info(f"发现 {len(new_conversations)} 个新对话")
 
-                            for conv_title in list(new_conversations)[:3]:  # 限制处理最多3个新对话
+                            for conv_title, conv_url_id in new_conversations[:3]:  # 限制处理最多3个新对话
                                 # 点击新对话
                                 if self._click_conversation(conv_title):
                                     # 获取最新消息
@@ -602,14 +612,14 @@ class DeepSeekMonitor:
                                     else:
                                         logger.info(f"对话 '{conv_title}' 的消息不以 @ 开头，跳过")
 
-                                    # 处理完立即标记为已处理，避免重复检查
-                                    self.processed_conversations.add(conv_title)
-                                    logger.info(f"已标记对话为已处理: {conv_title}")
+                                    # 处理完立即标记为已处理，避免重复检查（使用URL ID）
+                                    self.processed_conversations.add(conv_url_id)
+                                    logger.info(f"已标记对话为已处理: {conv_title} (ID: {conv_url_id})")
                         else:
                             logger.info("未检测到新对话")
 
-                    # 更新上一秒的对话列表
-                    self.last_conversations = current_conversations.copy()
+                    # 更新上一秒的对话列表（存储URL ID）
+                    self.last_conversations = current_url_ids
                     reconnect_count = 0  # 重置重连计数
 
                 except Exception as e:
