@@ -590,11 +590,11 @@ class DeepSeekMonitor:
                                         # 执行命令
                                         stdout, stderr, returncode = self._execute_bash_command(command)
 
-                                        # 构造回复内容
+                                        # 构造回复内容（不带前缀，保留换行）
                                         if returncode == 0:
-                                            response = f"✅ 命令执行成功\n\n```\n{stdout}\n```"
+                                            response = stdout.strip()
                                         else:
-                                            response = f"❌ 命令执行失败\n\n错误: {stderr if stderr else '未知错误'}"
+                                            response = f"执行失败: {stderr.strip() if stderr else '未知错误'}"
 
                                         # 发送回复
                                         self._send_response(response)
@@ -604,6 +604,7 @@ class DeepSeekMonitor:
 
                                     # 处理完立即标记为已处理，避免重复检查
                                     self.processed_conversations.add(conv_title)
+                                    logger.debug(f"已标记对话为已处理: {conv_title}")
                         else:
                             logger.debug("未检测到新对话")
 
