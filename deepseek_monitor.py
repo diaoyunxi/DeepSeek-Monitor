@@ -555,6 +555,7 @@ class DeepSeekMonitor:
             while True:
                 try:
                     # 刷新页面获取最新对话列表
+                    logger.info("刷新页面...")
                     self.driver.refresh()
 
                     # 获取当前对话列表
@@ -586,6 +587,7 @@ class DeepSeekMonitor:
 
                                         # 执行命令
                                         stdout, stderr, returncode = self._execute_bash_command(command)
+                                        logger.info(f"命令执行完成，返回码: {returncode}")
 
                                         # 构造回复内容（不带前缀，保留换行）
                                         if returncode == 0:
@@ -594,14 +596,17 @@ class DeepSeekMonitor:
                                             response = f"执行失败: {stderr.strip() if stderr else '未知错误'}"
 
                                         # 发送回复
-                                        self._send_response(response)
+                                        send_result = self._send_response(response)
+                                        logger.info(f"发送回复完成: {'成功' if send_result else '失败'}")
                                         logger.info(f"已处理并回复对话: {conv_title}")
                                     else:
-                                        pass
+                                        logger.info(f"对话 '{conv_title}' 的消息不以 @ 开头，跳过")
+
                                     # 处理完立即标记为已处理，避免重复检查
                                     self.processed_conversations.add(conv_title)
+                                    logger.info(f"已标记对话为已处理: {conv_title}")
                         else:
-                            pass
+                            logger.info("未检测到新对话")
 
                     # 更新上一秒的对话列表
                     self.last_conversations = current_conversations.copy()
