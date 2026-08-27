@@ -529,12 +529,49 @@ class DeepSeekMonitor:
                 EC.visibility_of_element_located((By.TAG_NAME, "textarea"))
             )
 
-            # 输入回复内容
-            input_box.send_keys(response_text)
+            # 使用 JavaScript 直接设置 textarea 值，避免 send_keys 的多行问题
+            self.driver.execute_script("""
+                const textarea = arguments[0];
+                textarea.value = arguments[1];
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                textarea.dispatchEvent(new Event('change', { bubbles: true }));
+            """, input_box, response_text)
 
-            # 发送回车键
-            input_box.send_keys(Keys.ENTER)
+            # 等待页面更新（Vue/React 框架需要时间响应值变化）
+            import time
+            time.sleep(0.5)
 
+            # 查找并点击发送按钮（网页改版后回车仅换行，需点击发送按钮）
+            # 发送按钮结构：<div role="button" class="ds-button ..."><div class="ds-button__icon"><svg>...</svg></div></div>
+            send_button = None
+            try:
+                # 方案1：查找 role="button" 且内部有 svg 的按钮
+                buttons = self.driver.find_elements(By.CSS_SELECTOR, '[role="button"]')
+                for btn in buttons:
+                    if btn.is_displayed() and btn.is_enabled():
+                        svg = btn.find_element(By.TAG_NAME, "svg")
+                        if svg.is_displayed():
+                            send_button = btn
+                            break
+            except Exception:
+                pass
+
+            if send_button:
+                send_button.click()
+                logger.info("已点击发送按钮")
+            else:
+                # 方案2：通过 XPath 查找
+                try:
+                    xpath = "//div[@role='button' and .//svg]"
+                    send_button = self.driver.find_element(By.XPATH, xpath)
+                    if send_button.is_displayed() and send_button.is_enabled():
+                        send_button.click()
+                        logger.info("已通过XPath点击发送按钮")
+                except Exception:
+                    logger.warning("未找到发送按钮")
+                    return False
+
+            time.sleep(1)  # 等待发送完成
             logger.info("已发送回复")
             return True
 
@@ -609,11 +646,17 @@ class DeepSeekMonitor:
                                         # 发送回复
                                         send_result = self._send_response(response)
                                         logger.info(f"发送回复完成: {'成功' if send_result else '失败'}")
+
+                                        if send_result:
+                                            # 等待2秒，确保回复已提交
+                                            import time
+                                            time.sleep(2)
+
                                         logger.info(f"已处理并回复对话: {conv_title}")
                                     else:
                                         logger.info(f"对话 '{conv_title}' 的消息不以 @ 开头，跳过")
 
-                                    # 处理完立即标记为已处理，避免重复检查（使用URL ID）
+                                    # 处理完标记为已处理，避免重复检查（使用URL ID）
                                     self.processed_conversations.add(conv_url_id)
                                     logger.info(f"已标记对话为已处理: {conv_title} (ID: {conv_url_id})")
                         else:
