@@ -587,6 +587,23 @@ class DeepSeekMonitor:
                 buttons = self.driver.find_elements(By.CSS_SELECTOR, '[role="button"]')
                 logger.info(f"找到 {len(buttons)} 个 role='button' 元素")
                 
+                # 详细记录每个按钮的信息
+                for i, btn in enumerate(buttons):
+                    try:
+                        rect = btn.rect
+                        cls = btn.get_attribute('class')
+                        visible = btn.is_displayed()
+                        enabled = btn.is_enabled()
+                        has_svg = False
+                        try:
+                            svg = btn.find_element(By.TAG_NAME, "svg")
+                            has_svg = svg.is_displayed()
+                        except:
+                            pass
+                        logger.info(f"按钮{i}: rect={rect}, visible={visible}, enabled={enabled}, has_svg={has_svg}, class={cls[:80]}")
+                    except Exception as e:
+                        logger.debug(f"按钮{i} 诊断失败: {e}")
+                
                 for i, btn in enumerate(buttons):
                     try:
                         if btn.is_displayed() and btn.is_enabled():
