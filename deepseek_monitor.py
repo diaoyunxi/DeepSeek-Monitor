@@ -346,7 +346,11 @@ class DeepSeekMonitor:
                         href = link.get_attribute('href')
                         url_id = href.split('/')[-1] if href else ''
 
-                        if title and len(title) > 0 and url_id:
+                        # 如果 url_id 提取失败，使用标题作为备用 ID
+                        if not url_id:
+                            url_id = title
+
+                        if title and len(title) > 0:
                             conversations.append((title, url_id))
                             # 更新标题映射
                             self.conversation_titles[url_id] = title
