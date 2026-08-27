@@ -519,7 +519,7 @@ class DeepSeekMonitor:
 
     def _send_response(self, response_text: str) -> bool:
         """
-        发送回复消息
+        发送回复消息 - 使用多策略确保发送成功
 
         Args:
             response_text: 回复内容
@@ -529,160 +529,176 @@ class DeepSeekMonitor:
         """
         try:
             import time
-            
+            from selenium.webdriver.common.action_chains import ActionChains
+
             # 等待输入框加载并可见
             input_box = WebDriverWait(self.driver, 10).until(
-                EC.visibility_of_element_located((By.TAG_NAME, "textarea"))
+                EC.visibility_of_element_located((By.CSS_SELECTOR, "textarea[name='search']"))
             )
-            
-            # 诊断：记录输入框状态
-            box_rect = input_box.rect
-            box_class = input_box.get_attribute('class')
-            logger.info(f"输入框状态: visible={box_rect['height']>0}, class={box_class[:50]}")
+            logger.info("找到输入框: textarea[name='search']")
 
-            # 使用 JavaScript 直接设置 textarea 值，避免 send_keys 的多行问题
-            result = self.driver.execute_script("""
+            # 使用JavaScript直接设置textarea值，避免send_keys的多行问题
+            self.driver.execute_script("""
                 const textarea = arguments[0];
                 const text = arguments[1];
-                
-                // 记录设置前的状态
-                const beforeValue = textarea.value;
-                
-                // 设置值
                 textarea.value = text;
-                
-                // 触发所有可能需要的事件
+                // 触发完整事件链
                 textarea.dispatchEvent(new Event('input', { bubbles: true }));
                 textarea.dispatchEvent(new Event('change', { bubbles: true }));
-                textarea.dispatchEvent(new Event('keyup', { bubbles: true }));
-                textarea.dispatchEvent(new Event('keydown', { bubbles: true }));
-                
-                // 尝试触发 Vue/React 的响应式更新
+                // 触发Vue/React响应式更新
                 if (textarea.__vue__) {
-                    textarea.__vue__.__patch(textarea.__vue__, textarea.__vue__._vnode);
+                    textarea.__vue__.$forceUpdate();
                 }
-                
-                return {
-                    before: beforeValue,
-                    after: textarea.value,
-                    matched: beforeValue !== text
-                };
             """, input_box, response_text)
-            
-            logger.info(f"值设置结果: {result}")
 
-            # 验证值是否真正设置
+            # 验证值是否设置成功
             verify_value = self.driver.execute_script("return arguments[0].value;", input_box)
             if verify_value != response_text:
                 logger.error(f"值验证失败! 期望={repr(response_text[:50])}, 实际={repr(verify_value[:50])}")
                 return False
-            
-            time.sleep(0.5)
+            logger.info(f"值设置成功: {repr(response_text[:30])}...")
 
-            # 查找并点击发送按钮（网页改版后回车仅换行，需点击发送按钮）
-            send_button = None
-            all_buttons = []
-            try:
-                # 获取所有 role="button" 元素
-                buttons = self.driver.find_elements(By.CSS_SELECTOR, '[role="button"]')
-                logger.info(f"找到 {len(buttons)} 个 role='button' 元素")
-                
-                # 详细记录每个按钮的信息
-                for i, btn in enumerate(buttons):
-                    try:
-                        rect = btn.rect
-                        cls = btn.get_attribute('class')
-                        visible = btn.is_displayed()
-                        enabled = btn.is_enabled()
-                        has_svg = False
-                        try:
-                            svg = btn.find_element(By.TAG_NAME, "svg")
-                            has_svg = svg.is_displayed()
-                        except:
-                            pass
-                        logger.info(f"按钮{i}: rect={rect}, visible={visible}, enabled={enabled}, has_svg={has_svg}, class={cls[:80]}")
-                    except Exception as e:
-                        logger.debug(f"按钮{i} 诊断失败: {e}")
-                
-                for i, btn in enumerate(buttons):
-                    try:
-                        if btn.is_displayed() and btn.is_enabled():
-                            svg = btn.find_element(By.TAG_NAME, "svg")
-                            if svg.is_displayed():
-                                btn_rect = btn.rect
-                                all_buttons.append({
-                                    'index': i,
-                                    'rect': btn_rect,
-                                    'class': btn.get_attribute('class')[:50]
-                                })
-                                logger.info(f"候选按钮{i}: rect={btn_rect}, class={btn.get_attribute('class')[:50]}")
-                                if send_button is None:
-                                    send_button = btn
-                    except Exception as e:
-                        continue
-            except Exception as e:
-                logger.error(f"查找按钮时出错: {e}")
+            time.sleep(0.3)
 
-            if send_button:
-                # 记录点击前的页面状态
-                before_url = self.driver.current_url
-                before_html_len = len(self.driver.page_source)
-                
-                logger.info(f"点击发送按钮: {send_button.rect}")
-                send_button.click()
-                logger.info("已点击发送按钮")
-                
-                # 等待并验证
-                time.sleep(1)
-                
-                # 验证点击是否有效
-                after_url = self.driver.current_url
-                after_html_len = len(self.driver.page_source)
-                current_value = self.driver.execute_script("return arguments[0].value;", input_box)
-                
-                logger.info(f"点击后验证: url变化={before_url != after_url}, html长度变化={before_html_len != after_html_len}, textarea清空={current_value == ''}")
-                
-                # 如果 textarea 没有清空，说明点击可能无效
-                if current_value != '':
-                    logger.warning(f"textarea 未被清空，点击可能无效! 当前值={repr(current_value[:50])}")
-                    return False
-                    
-            else:
-                # 方案2：通过 XPath 查找
+            # 多策略查找并点击发送按钮
+            sent = False
+
+            # 策略1: 使用更精确的CSS选择器查找发送按钮
+            send_selectors = [
+                "button[type='submit']",
+                "button.ds-button",
+                "[role='button'].ds-button",
+                "div.ds-button__icon[role='button']",
+                "button[aria-label*='发送']",
+                "button[aria-label*='send']",
+            ]
+
+            for selector in send_selectors:
                 try:
-                    xpath = "//div[@role='button' and .//svg]"
-                    send_button = self.driver.find_element(By.XPATH, xpath)
-                    if send_button.is_displayed() and send_button.is_enabled():
-                        send_button.click()
-                        logger.info("已通过XPath点击发送按钮")
-                except Exception:
-                    logger.warning("未找到发送按钮")
-                    return False
+                    btns = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    for btn in btns:
+                        if btn.is_displayed() and btn.is_enabled():
+                            logger.info(f"尝试策略1: {selector}")
+                            btn.click()
+                            time.sleep(1)
+                            if self._verify_send_success(input_box, response_text):
+                                sent = True
+                                logger.info("策略1成功")
+                                break
+                except Exception as e:
+                    logger.debug(f"策略1 {selector} 失败: {e}")
+                    continue
+                if sent:
+                    break
 
-            # 诊断：检查发送后的页面状态
-            time.sleep(1)
-            
-            # 验证 textarea 是否清空
-            verify_clear = self.driver.execute_script("return arguments[0].value;", input_box)
-            if verify_clear:
-                logger.warning(f"发送后 textarea 未清空! 当前值={repr(verify_clear[:50])}")
-            
-            # 验证是否有新消息出现
-            body_text = self.driver.find_element(By.TAG_NAME, "body").text
-            if response_text[:20] in body_text:
-                logger.info(f"验证成功: 响应文本出现在页面中")
+            # 策略2: 遍历所有role=button元素，找最靠近输入框的
+            if not sent:
+                try:
+                    buttons = self.driver.find_elements(By.CSS_SELECTOR, '[role="button"]')
+                    logger.info(f"策略2: 找到{len(buttons)}个role=button元素")
+                    for btn in buttons:
+                        if btn.is_displayed() and btn.is_enabled():
+                            try:
+                                svg = btn.find_element(By.TAG_NAME, "svg")
+                                if svg.is_displayed():
+                                    logger.info(f"策略2: 点击候选按钮, rect={btn.rect}")
+                                    btn.click()
+                                    time.sleep(1)
+                                    if self._verify_send_success(input_box, response_text):
+                                        sent = True
+                                        logger.info("策略2成功")
+                                        break
+                            except Exception:
+                                continue
+                except Exception as e:
+                    logger.error(f"策略2失败: {e}")
+
+            # 策略3: 使用JavaScript直接模拟点击发送按钮
+            if not sent:
+                try:
+                    result = self.driver.execute_script("""
+                        // 尝试多种选择器
+                        const selectors = [
+                            'button[type="submit"]',
+                            'button.ds-button',
+                            '[role="button"].ds-button',
+                            'div.ds-button__icon[role="button"]'
+                        ];
+                        for (const sel of selectors) {
+                            const btn = document.querySelector(sel);
+                            if (btn && btn.offsetWidth > 0 && btn.offsetHeight > 0) {
+                                btn.click();
+                                return 'clicked_' + sel;
+                            }
+                        }
+                        // 查找所有有svg的role=button
+                        const allBtns = document.querySelectorAll('[role="button"]');
+                        for (const btn of allBtns) {
+                            const svg = btn.querySelector('svg');
+                            if (svg && btn.offsetWidth > 0 && btn.offsetHeight > 0) {
+                                btn.click();
+                                return 'clicked_role_button';
+                            }
+                        }
+                        return 'none_found';
+                    """)
+                    logger.info(f"策略3 JS点击结果: {result}")
+                    time.sleep(1)
+                    if self._verify_send_success(input_box, response_text):
+                        sent = True
+                        logger.info("策略3成功")
+                except Exception as e:
+                    logger.error(f"策略3失败: {e}")
+
+            # 策略4: 使用ActionChains模拟键盘发送
+            if not sent:
+                try:
+                    logger.info("策略4: 使用键盘Enter发送")
+                    actions = ActionChains(self.driver)
+                    actions.click(input_box)
+                    actions.key_down(Keys.CONTROL)
+                    actions.send_keys(Keys.ENTER)
+                    actions.key_up(Keys.CONTROL)
+                    actions.perform()
+                    time.sleep(1)
+                    if self._verify_send_success(input_box, response_text):
+                        sent = True
+                        logger.info("策略4成功")
+                except Exception as e:
+                    logger.error(f"策略4失败: {e}")
+
+            if sent:
+                logger.info("已发送回复")
+                return True
             else:
-                logger.warning(f"验证失败: 响应文本未出现在页面中")
-                logger.warning(f"页面文本长度: {len(body_text)}")
-            
-            logger.info("已发送回复")
-            return True
+                logger.error("所有发送策略均失败")
+                return False
 
         except Exception as e:
             logger.error(f"发送回复时出错: {e}")
             import traceback
             logger.error(traceback.format_exc())
             return False
+
+    def _verify_send_success(self, input_box, expected_text):
+        """验证消息是否发送成功"""
+        import time
+        time.sleep(0.3)
+        # 检查textarea是否清空
+        current_value = self.driver.execute_script("return arguments[0].value;", input_box)
+        if current_value == '' or current_value is None:
+            logger.info("验证通过: textarea已清空")
+            return True
+        # 检查expected_text是否出现在页面中
+        try:
+            body_text = self.driver.find_element(By.TAG_NAME, "body").text
+            if expected_text[:20] in body_text:
+                logger.info("验证通过: 响应文本出现在页面中")
+                return True
+        except Exception:
+            pass
+        logger.warning(f"验证失败: textarea未清空({repr(current_value[:30])}), 文本未出现")
+        return False
 
     def run(self):
         """
