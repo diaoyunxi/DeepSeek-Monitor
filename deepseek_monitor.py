@@ -528,41 +528,108 @@ class DeepSeekMonitor:
             发送是否成功
         """
         try:
+            import time
+            
             # 等待输入框加载并可见
             input_box = WebDriverWait(self.driver, 10).until(
                 EC.visibility_of_element_located((By.TAG_NAME, "textarea"))
             )
+            
+            # 诊断：记录输入框状态
+            box_rect = input_box.rect
+            box_class = input_box.get_attribute('class')
+            logger.info(f"输入框状态: visible={box_rect['height']>0}, class={box_class[:50]}")
 
             # 使用 JavaScript 直接设置 textarea 值，避免 send_keys 的多行问题
-            self.driver.execute_script("""
+            result = self.driver.execute_script("""
                 const textarea = arguments[0];
-                textarea.value = arguments[1];
+                const text = arguments[1];
+                
+                // 记录设置前的状态
+                const beforeValue = textarea.value;
+                
+                // 设置值
+                textarea.value = text;
+                
+                // 触发所有可能需要的事件
                 textarea.dispatchEvent(new Event('input', { bubbles: true }));
                 textarea.dispatchEvent(new Event('change', { bubbles: true }));
+                textarea.dispatchEvent(new Event('keyup', { bubbles: true }));
+                textarea.dispatchEvent(new Event('keydown', { bubbles: true }));
+                
+                // 尝试触发 Vue/React 的响应式更新
+                if (textarea.__vue__) {
+                    textarea.__vue__.__patch(textarea.__vue__, textarea.__vue__._vnode);
+                }
+                
+                return {
+                    before: beforeValue,
+                    after: textarea.value,
+                    matched: beforeValue !== text
+                };
             """, input_box, response_text)
+            
+            logger.info(f"值设置结果: {result}")
 
-            # 等待页面更新（Vue/React 框架需要时间响应值变化）
-            import time
+            # 验证值是否真正设置
+            verify_value = self.driver.execute_script("return arguments[0].value;", input_box)
+            if verify_value != response_text:
+                logger.error(f"值验证失败! 期望={repr(response_text[:50])}, 实际={repr(verify_value[:50])}")
+                return False
+            
             time.sleep(0.5)
 
             # 查找并点击发送按钮（网页改版后回车仅换行，需点击发送按钮）
-            # 发送按钮结构：<div role="button" class="ds-button ..."><div class="ds-button__icon"><svg>...</svg></div></div>
             send_button = None
+            all_buttons = []
             try:
-                # 方案1：查找 role="button" 且内部有 svg 的按钮
+                # 获取所有 role="button" 元素
                 buttons = self.driver.find_elements(By.CSS_SELECTOR, '[role="button"]')
-                for btn in buttons:
-                    if btn.is_displayed() and btn.is_enabled():
-                        svg = btn.find_element(By.TAG_NAME, "svg")
-                        if svg.is_displayed():
-                            send_button = btn
-                            break
-            except Exception:
-                pass
+                logger.info(f"找到 {len(buttons)} 个 role='button' 元素")
+                
+                for i, btn in enumerate(buttons):
+                    try:
+                        if btn.is_displayed() and btn.is_enabled():
+                            svg = btn.find_element(By.TAG_NAME, "svg")
+                            if svg.is_displayed():
+                                btn_rect = btn.rect
+                                all_buttons.append({
+                                    'index': i,
+                                    'rect': btn_rect,
+                                    'class': btn.get_attribute('class')[:50]
+                                })
+                                logger.info(f"候选按钮{i}: rect={btn_rect}, class={btn.get_attribute('class')[:50]}")
+                                if send_button is None:
+                                    send_button = btn
+                    except Exception as e:
+                        continue
+            except Exception as e:
+                logger.error(f"查找按钮时出错: {e}")
 
             if send_button:
+                # 记录点击前的页面状态
+                before_url = self.driver.current_url
+                before_html_len = len(self.driver.page_source)
+                
+                logger.info(f"点击发送按钮: {send_button.rect}")
                 send_button.click()
                 logger.info("已点击发送按钮")
+                
+                # 等待并验证
+                time.sleep(1)
+                
+                # 验证点击是否有效
+                after_url = self.driver.current_url
+                after_html_len = len(self.driver.page_source)
+                current_value = self.driver.execute_script("return arguments[0].value;", input_box)
+                
+                logger.info(f"点击后验证: url变化={before_url != after_url}, html长度变化={before_html_len != after_html_len}, textarea清空={current_value == ''}")
+                
+                # 如果 textarea 没有清空，说明点击可能无效
+                if current_value != '':
+                    logger.warning(f"textarea 未被清空，点击可能无效! 当前值={repr(current_value[:50])}")
+                    return False
+                    
             else:
                 # 方案2：通过 XPath 查找
                 try:
@@ -581,6 +648,8 @@ class DeepSeekMonitor:
 
         except Exception as e:
             logger.error(f"发送回复时出错: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False
 
     def run(self):
