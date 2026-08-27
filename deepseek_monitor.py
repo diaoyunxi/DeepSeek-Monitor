@@ -642,7 +642,22 @@ class DeepSeekMonitor:
                     logger.warning("未找到发送按钮")
                     return False
 
-            time.sleep(1)  # 等待发送完成
+            # 诊断：检查发送后的页面状态
+            time.sleep(1)
+            
+            # 验证 textarea 是否清空
+            verify_clear = self.driver.execute_script("return arguments[0].value;", input_box)
+            if verify_clear:
+                logger.warning(f"发送后 textarea 未清空! 当前值={repr(verify_clear[:50])}")
+            
+            # 验证是否有新消息出现
+            body_text = self.driver.find_element(By.TAG_NAME, "body").text
+            if response_text[:20] in body_text:
+                logger.info(f"验证成功: 响应文本出现在页面中")
+            else:
+                logger.warning(f"验证失败: 响应文本未出现在页面中")
+                logger.warning(f"页面文本长度: {len(body_text)}")
+            
             logger.info("已发送回复")
             return True
 
