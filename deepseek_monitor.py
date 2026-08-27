@@ -346,20 +346,14 @@ class DeepSeekMonitor:
                         href = link.get_attribute('href')
                         url_id = href.split('/')[-1] if href else ''
 
-                        logger.debug(f"对话链接: href={href}, url_id={url_id}, title={title}")
-
                         # 如果 url_id 提取失败，使用标题作为备用 ID
                         if not url_id:
                             url_id = title
-                            logger.debug(f"url_id 为空，使用标题作为备用: {url_id}")
 
                         if title and len(title) > 0:
                             conversations.append((title, url_id))
                             # 更新标题映射
                             self.conversation_titles[url_id] = title
-                            logger.debug(f"添加对话: ({title}, {url_id})")
-                        else:
-                            logger.debug(f"跳过对话: title为空或长度为0")
                     except Exception:
                         # 如果找不到标题元素，跳过
                         continue
@@ -614,7 +608,6 @@ class DeepSeekMonitor:
 
                     # 获取当前对话列表
                     current_conversations = self._get_conversations()
-                    logger.info(f"当前对话列表: {current_conversations[:5]}...")  # 只显示前5个
 
                     if self.is_first_run:
                         # 首次运行：缓存所有现有对话，不处理
@@ -626,7 +619,6 @@ class DeepSeekMonitor:
                         # 后续运行：只处理新增的对话（基于URL ID）
                         current_url_ids = set(url_id for _, url_id in current_conversations)
                         new_url_ids = current_url_ids - self.last_conversations - self.processed_conversations
-                        logger.info(f"URL ID检测: current={len(current_url_ids)}, last={len(self.last_conversations)}, processed={len(self.processed_conversations)}, new={len(new_url_ids)}")
 
                         if new_url_ids:
                             # 找到新对话的标题
