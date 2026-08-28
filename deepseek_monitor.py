@@ -531,141 +531,67 @@ class DeepSeekMonitor:
             import time
             from selenium.webdriver.common.action_chains import ActionChains
 
+            # 记录发送前的URL，用于检测页面跳转
+            url_before = self.driver.current_url
+            logger.info(f"发送前URL: {url_before}")
+
             # 等待输入框加载并可见
             input_box = WebDriverWait(self.driver, 10).until(
                 EC.visibility_of_element_located((By.CSS_SELECTOR, "textarea[name='search']"))
             )
             logger.info("找到输入框: textarea[name='search']")
 
-            # 使用JavaScript直接设置textarea值，避免send_keys的多行问题
-            self.driver.execute_script("""
-                const textarea = arguments[0];
-                const text = arguments[1];
-                textarea.value = text;
-                // 触发完整事件链
-                textarea.dispatchEvent(new Event('input', { bubbles: true }));
-                textarea.dispatchEvent(new Event('change', { bubbles: true }));
-                // 触发Vue/React响应式更新
-                if (textarea.__vue__) {
-                    textarea.__vue__.$forceUpdate();
-                }
-            """, input_box, response_text)
+            # 使用send_keys设置文本，确保Vue响应式系统正确更新按钮状态
+            # 重要：不能使用JS直接设置textarea.value，否则按钮会保持disabled状态
+            input_box.send_keys(response_text)
+            logger.info(f"文本已设置: {repr(response_text[:30])}...")
 
-            # 验证值是否设置成功
-            verify_value = self.driver.execute_script("return arguments[0].value;", input_box)
-            if verify_value != response_text:
-                logger.error(f"值验证失败! 期望={repr(response_text[:50])}, 实际={repr(verify_value[:50])}")
-                return False
-            logger.info(f"值设置成功: {repr(response_text[:30])}...")
+            time.sleep(0.5)
 
-            time.sleep(0.3)
-
-            # 多策略查找并点击发送按钮
+            # 多策略发送消息
             sent = False
 
-            # 策略1: 使用更精确的CSS选择器查找发送按钮
-            send_selectors = [
-                "button[type='submit']",
-                "button.ds-button",
-                "[role='button'].ds-button",
-                "div.ds-button__icon[role='button']",
-                "button[aria-label*='发送']",
-                "button[aria-label*='send']",
-            ]
-
-            for selector in send_selectors:
-                try:
-                    btns = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                    for btn in btns:
-                        if btn.is_displayed() and btn.is_enabled():
-                            logger.info(f"尝试策略1: {selector}")
-                            btn.click()
-                            time.sleep(1)
-                            if self._verify_send_success(input_box, response_text):
-                                sent = True
-                                logger.info("策略1成功")
-                                break
-                except Exception as e:
-                    logger.debug(f"策略1 {selector} 失败: {e}")
-                    continue
-                if sent:
-                    break
-
-            # 策略2: 遍历所有role=button元素，找最靠近输入框的
+            # 策略1: 使用键盘Enter发送（首选，最直接）
             if not sent:
                 try:
-                    buttons = self.driver.find_elements(By.CSS_SELECTOR, '[role="button"]')
-                    logger.info(f"策略2: 找到{len(buttons)}个role=button元素")
-                    for btn in buttons:
-                        if btn.is_displayed() and btn.is_enabled():
-                            try:
-                                svg = btn.find_element(By.TAG_NAME, "svg")
-                                if svg.is_displayed():
-                                    logger.info(f"策略2: 点击候选按钮, rect={btn.rect}")
-                                    btn.click()
-                                    time.sleep(1)
-                                    if self._verify_send_success(input_box, response_text):
-                                        sent = True
-                                        logger.info("策略2成功")
-                                        break
-                            except Exception:
-                                continue
-                except Exception as e:
-                    logger.error(f"策略2失败: {e}")
-
-            # 策略3: 使用JavaScript直接模拟点击发送按钮
-            if not sent:
-                try:
-                    result = self.driver.execute_script("""
-                        // 尝试多种选择器
-                        const selectors = [
-                            'button[type="submit"]',
-                            'button.ds-button',
-                            '[role="button"].ds-button',
-                            'div.ds-button__icon[role="button"]'
-                        ];
-                        for (const sel of selectors) {
-                            const btn = document.querySelector(sel);
-                            if (btn && btn.offsetWidth > 0 && btn.offsetHeight > 0) {
-                                btn.click();
-                                return 'clicked_' + sel;
-                            }
-                        }
-                        // 查找所有有svg的role=button
-                        const allBtns = document.querySelectorAll('[role="button"]');
-                        for (const btn of allBtns) {
-                            const svg = btn.querySelector('svg');
-                            if (svg && btn.offsetWidth > 0 && btn.offsetHeight > 0) {
-                                btn.click();
-                                return 'clicked_role_button';
-                            }
-                        }
-                        return 'none_found';
-                    """)
-                    logger.info(f"策略3 JS点击结果: {result}")
-                    time.sleep(1)
-                    if self._verify_send_success(input_box, response_text):
-                        sent = True
-                        logger.info("策略3成功")
-                except Exception as e:
-                    logger.error(f"策略3失败: {e}")
-
-            # 策略4: 使用ActionChains模拟键盘发送
-            if not sent:
-                try:
-                    logger.info("策略4: 使用键盘Enter发送")
+                    logger.info("策略1: 使用键盘Enter发送")
                     actions = ActionChains(self.driver)
                     actions.click(input_box)
-                    actions.key_down(Keys.CONTROL)
                     actions.send_keys(Keys.ENTER)
-                    actions.key_up(Keys.CONTROL)
                     actions.perform()
-                    time.sleep(1)
-                    if self._verify_send_success(input_box, response_text):
+                    # 等待页面更新
+                    time.sleep(2)
+                    # 验证发送成功
+                    if self._verify_send_success(response_text, url_before):
                         sent = True
-                        logger.info("策略4成功")
+                        logger.info("策略1成功")
                 except Exception as e:
-                    logger.error(f"策略4失败: {e}")
+                    logger.error(f"策略1失败: {e}")
+
+            # 策略2: 使用JavaScript触发keydown事件（备用）
+            if not sent:
+                try:
+                    logger.info("策略2: 使用JavaScript触发Enter事件")
+                    result = self.driver.execute_script("""
+                        const textarea = document.querySelector('textarea[name="search"]');
+                        if (textarea) {
+                            textarea.dispatchEvent(new KeyboardEvent('keydown', {
+                                key: 'Enter',
+                                code: 'Enter',
+                                keyCode: 13,
+                                bubbles: true
+                            }));
+                            return 'triggered_enter_event';
+                        }
+                        return 'not found';
+                    """)
+                    logger.info(f"策略2 JS结果: {result}")
+                    time.sleep(2)
+                    if self._verify_send_success(response_text, url_before):
+                        sent = True
+                        logger.info("策略2成功")
+                except Exception as e:
+                    logger.error(f"策略2失败: {e}")
 
             if sent:
                 logger.info("已发送回复")
@@ -680,24 +606,54 @@ class DeepSeekMonitor:
             logger.error(traceback.format_exc())
             return False
 
-    def _verify_send_success(self, input_box, expected_text):
-        """验证消息是否发送成功"""
+    def _verify_send_success(self, expected_text, url_before=None, timeout=5.0):
+        """验证消息是否真正发送成功
+
+        验证条件（必须同时满足）：
+        1. 输入框已清空
+        2. 消息文本出现在页面中（或URL已跳转到新对话）
+
+        注意：仅检查输入框清空不够，因为点击disabled按钮也会清空输入框
+
+        Args:
+            expected_text: 期望发送的文本
+            url_before: 发送前的URL（用于检测跳转）
+            timeout: 最大等待时间（秒），默认为5秒
+
+        Returns:
+            验证是否成功
+        """
         import time
-        time.sleep(0.3)
-        # 检查textarea是否清空
-        current_value = self.driver.execute_script("return arguments[0].value;", input_box)
-        if current_value == '' or current_value is None:
-            logger.info("验证通过: textarea已清空")
-            return True
-        # 检查expected_text是否出现在页面中
-        try:
-            body_text = self.driver.find_element(By.TAG_NAME, "body").text
-            if expected_text[:20] in body_text:
-                logger.info("验证通过: 响应文本出现在页面中")
-                return True
-        except Exception:
-            pass
-        logger.warning(f"验证失败: textarea未清空({repr(current_value[:30])}), 文本未出现")
+        start_time = time.time()
+        check_interval = 0.3
+
+        while time.time() - start_time < timeout:
+            try:
+                # 检查输入框是否为空
+                current_input = self.driver.find_element(By.CSS_SELECTOR, "textarea[name='search']")
+                current_value = current_input.get_attribute('value')
+                input_empty = not current_value or current_value.strip() == ''
+
+                # 检查URL是否变化（新建对话）
+                url_changed = False
+                if url_before:
+                    current_url = self.driver.current_url
+                    url_changed = (url_before != current_url and '/a/chat/s/' in current_url)
+
+                # 检查文本是否出现在页面中
+                body_text = self.driver.find_element(By.TAG_NAME, "body").text
+                text_in_page = expected_text in body_text
+
+                # 验证成功条件：输入框清空 AND (文本在页面中 OR URL已变化)
+                if input_empty and (text_in_page or url_changed):
+                    logger.info("验证通过: 消息已发送成功")
+                    return True
+
+            except Exception as e:
+                pass
+            time.sleep(check_interval)
+
+        logger.warning(f"验证失败: 在{timeout}秒内未检测到发送成功的证据")
         return False
 
     def run(self):
