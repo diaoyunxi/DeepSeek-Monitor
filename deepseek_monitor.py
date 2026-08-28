@@ -449,11 +449,64 @@ class DeepSeekMonitor:
             消息文本，如果找不到则返回 None
         """
         try:
-            # 等待页面加载
-            
+            # 等待页面加载，确保消息内容已完全渲染
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.TAG_NAME, "body"))
+            )
+            # 等待页面动态内容加载完成
+            import time
+            time.sleep(0.5)
 
-            # 获取页面所有文本
-            body_text = self.driver.find_element(By.TAG_NAME, "body").text
+            # 方法0：通过 textContent 遍历 DOM 获取完整消息文本
+            # 注意：innerText 只返回可见渲染文本，长消息会被 CSS（line-clamp/省略号）截断，
+            # 导致只能取到约 32 字符；textContent 则包含完整文本，不受渲染截断影响。
+            full_message = self.driver.execute_script("""
+                // 收集所有以 @ 开头的候选文本（textContent，不被 CSS 截断）
+                var candidates = [];
+                var walker = document.createTreeWalker(
+                    document.body,
+                    NodeFilter.SHOW_TEXT,
+                    null,
+                    false
+                );
+                var node;
+                while ((node = walker.nextNode())) {
+                    var text = node.textContent;
+                    if (text && text.trim().startsWith('@') && text.trim().length > 1) {
+                        candidates.push(text.trim());
+                    }
+                }
+                // 兜底：直接检查所有元素的 textContent
+                if (candidates.length === 0) {
+                    var elems = document.querySelectorAll('div, p, span, pre, code');
+                    for (var i = 0; i < elems.length; i++) {
+                        var t = elems[i].textContent;
+                        if (t && t.trim().startsWith('@') && t.trim().length > 1) {
+                            candidates.push(t.trim());
+                        }
+                    }
+                }
+                if (candidates.length === 0) {
+                    return null;
+                }
+                // 取最长的候选文本（完整消息必然长于被截断的片段）
+                var longest = candidates[0];
+                for (var j = 1; j < candidates.length; j++) {
+                    if (candidates[j].length > longest.length) {
+                        longest = candidates[j];
+                    }
+                }
+                return longest;
+            """)
+
+            if full_message:
+                # 去掉可能混入的页面无关空白，保留单行命令
+                full_message = ' '.join(full_message.split())
+                logger.info(f"通过 textContent 获取到完整消息（长度: {len(full_message)}）")
+                return full_message
+
+            # 使用 JavaScript 获取完整的页面文本，避免 Selenium text 属性的截断问题
+            body_text = self.driver.execute_script("return document.body.innerText;")
 
             if not body_text:
                 return None
@@ -472,7 +525,7 @@ class DeepSeekMonitor:
                 # 跳过明显的非消息内容
                 if not line:
                     continue
-                if len(line) < 3 or len(line) > 200:
+                if len(line) < 3 or len(line) > 20000:
                     continue
                 # 排除AI回复的关键词
                 exclude_words = ['Thought', 'DeepThink', 'Search', 'AI-generated',
