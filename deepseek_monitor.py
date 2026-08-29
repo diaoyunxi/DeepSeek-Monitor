@@ -785,13 +785,24 @@ class DeepSeekMonitor:
                                         logger.info(f"命令执行完成，返回码: {returncode}")
 
                                         # 构造回复内容（不带前缀，保留换行）
+                                        # 命令执行完成但没有任何输出时，统一回复 no output
+                                        stdout_text = (stdout or "").strip()
+                                        stderr_text = (stderr or "").strip()
+
                                         if returncode == 0:
-                                            response = stdout.strip()
-                                            # 命令成功但无输出时的兜底提示，避免发送空消息
-                                            if not response:
-                                                response = "命令执行成功，无输出。"
+                                            # 执行成功：优先回复 stdout；
+                                            # stdout 为空时回退到 stderr（部分命令把信息输出到 stderr）；
+                                            # 两者都为空则回复 no output
+                                            if stdout_text:
+                                                response = stdout_text
+                                            elif stderr_text:
+                                                response = stderr_text
+                                            else:
+                                                response = "no output"
                                         else:
-                                            response = f"执行失败: {stderr.strip() if stderr else '未知错误'}"
+                                            # 执行失败：回复 stderr；
+                                            # 无错误输出时回复“执行失败: no output”，保留失败状态说明
+                                            response = f"执行失败: {stderr_text if stderr_text else 'no output'}"
                                         logger.info(f"执行结果预览: {response[:100]}{'...' if len(response) > 100 else ''}")
 
                                         # 发送回复
