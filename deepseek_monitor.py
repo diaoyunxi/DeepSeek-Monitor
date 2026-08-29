@@ -596,8 +596,24 @@ class DeepSeekMonitor:
 
             # 使用send_keys设置文本，确保Vue响应式系统正确更新按钮状态
             # 重要：不能使用JS直接设置textarea.value，否则按钮会保持disabled状态
-            input_box.send_keys(response_text)
-            logger.info(f"文本已设置: {repr(response_text[:30])}...")
+            # 重要：不能一次性send_keys包含换行符(\n)的多行文本，
+            # 因为\n会被页面当作Enter键处理，导致第一行被立即单独发送成一条消息，
+            # 后续内容丢失换行挤成另一条。正确做法：逐行输入，行与行之间
+            # 用 Shift+Enter 组合键插入换行（不触发发送），最后统一按Enter发送，
+            # 保证多行命令结果只产生一条带换行的回复。
+            response_text = response_text.replace('\r\n', '\n').replace('\r', '\n')
+            lines = response_text.split('\n')
+            for i, line in enumerate(lines):
+                if line:
+                    input_box.send_keys(line)
+                # 除最后一行外，每行末尾插入换行（Shift+Enter，不触发发送）
+                if i < len(lines) - 1:
+                    ActionChains(self.driver) \
+                        .key_down(Keys.SHIFT) \
+                        .send_keys(Keys.ENTER) \
+                        .key_up(Keys.SHIFT) \
+                        .perform()
+            logger.info(f"文本已设置（共 {len(lines)} 行）: {repr(response_text[:30])}...")
 
             time.sleep(0.5)
 
@@ -694,8 +710,10 @@ class DeepSeekMonitor:
                     url_changed = (url_before != current_url and '/a/chat/s/' in current_url)
 
                 # 检查文本是否出现在页面中
+                # 注意：多行消息在页面渲染后，空白（换行/空格）格式可能与原文不同
+                # （如段落间空行），因此先去除所有空白字符再做包含性比较
                 body_text = self.driver.find_element(By.TAG_NAME, "body").text
-                text_in_page = expected_text in body_text
+                text_in_page = ''.join(expected_text.split()) in ''.join(body_text.split())
 
                 # 验证成功条件：输入框清空 AND (文本在页面中 OR URL已变化)
                 if input_empty and (text_in_page or url_changed):
@@ -769,6 +787,9 @@ class DeepSeekMonitor:
                                         # 构造回复内容（不带前缀，保留换行）
                                         if returncode == 0:
                                             response = stdout.strip()
+                                            # 命令成功但无输出时的兜底提示，避免发送空消息
+                                            if not response:
+                                                response = "命令执行成功，无输出。"
                                         else:
                                             response = f"执行失败: {stderr.strip() if stderr else '未知错误'}"
                                         logger.info(f"执行结果预览: {response[:100]}{'...' if len(response) > 100 else ''}")
