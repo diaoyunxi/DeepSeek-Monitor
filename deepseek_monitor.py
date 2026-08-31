@@ -43,9 +43,6 @@ LOGIN_URL = "https://chat.deepseek.com/"
 class DeepSeekMonitor:
     """DeepSeek 对话监控器"""
 
-    # 单个对话切换到失败时的最大重试次数，超过则放弃处理，避免无限重试
-    MAX_CONVERSATION_RETRY = 3
-
     def __init__(self, config_path: str = "config.json"):
         """
         初始化监控器
@@ -59,8 +56,6 @@ class DeepSeekMonitor:
         self.processed_conversations: set = set()  # 已处理过的对话集合（存储url_id）
         self.is_first_run: bool = True  # 是否首次运行
         self.conversation_titles: dict = {}  # url_id -> title 的映射
-        self.pending_retry: set = set()  # 需要下一轮重试的对话（存储url_id）
-        self.retry_counts: dict = {}  # url_id -> 已重试次数，用于避免无限重试
         self.profile_dir = self.config.get("profile_dir", "./browser_profile")
         self.chrome_driver_path = "/usr/local/bin/chromedriver"
 
@@ -410,17 +405,12 @@ class DeepSeekMonitor:
             logger.warning(f"获取对话列表时出错: {e}")
             return conversations
 
-    def _click_conversation(self, title: str, url_id: str = "") -> bool:
+    def _click_conversation(self, title: str) -> bool:
         """
         点击指定对话
 
-        优先按 url_id 精确定位侧边栏中的对话链接；定位不到时回退按标题匹配，
-        且回退也只在对话链接范围内查找，避免命中侧边栏外层容器等无关元素
-        导致点击无效（点击无效会使页面停留在上一个对话）。
-
         Args:
             title: 对话标题
-            url_id: 对话的 URL ID（可选，提供时优先使用）
 
         Returns:
             点击是否成功
@@ -429,30 +419,15 @@ class DeepSeekMonitor:
             # 等待页面稳定
             
 
-            # 优先按 url_id 精确定位侧边栏中的对话链接
-            if url_id:
-                id_links = self.driver.find_elements(By.CSS_SELECTOR, f"a[href*='/a/chat/s/{url_id}']")
-                for link in id_links:
-                    try:
-                        if link.is_displayed():
-                            link.click()
-                            logger.info(f"已点击对话: {title} (按URL ID定位: {url_id})")
-                            return True
-                    except (NoSuchElementException, StaleElementReferenceException):
-                        continue
-                logger.warning(f"按URL ID未找到对话链接: {url_id}，回退按标题匹配")
-
-            # 回退方案：仅在对话链接范围内按标题匹配
-            clickables = self.driver.find_elements(By.CSS_SELECTOR, "a[href*='/a/chat/s/']")
+            # 查找所有可点击元素
+            clickables = self.driver.find_elements(By.CSS_SELECTOR, '[role="button"], button, a, [class*="item"], li')
 
             for elem in clickables:
                 try:
-                    if not elem.is_displayed():
-                        continue
                     elem_text = elem.text.strip()
-                    if elem_text and (title in elem_text or elem_text == title):
+                    if title in elem_text or elem_text == title:
                         elem.click()
-                        logger.info(f"已点击对话: {title} (按标题匹配)")
+                        logger.info(f"已点击对话: {title}")
                         # 等待页面加载
                         
                         return True
@@ -466,104 +441,21 @@ class DeepSeekMonitor:
             logger.error(f"点击对话时出错: {e}")
             return False
 
-    def _get_content_fingerprint(self) -> str:
-        """
-        获取页面主体内容指纹（内容长度 + 前若干字符）
-
-        用于判断对话切换后页面内容是否真的刷新，
-        避免在新对话内容渲染完成前读到上一个对话残留的消息。
-
-        Returns:
-            内容指纹字符串，获取失败时返回空字符串
-        """
-        try:
-            # 指纹 = 文本总长度 + 首100字符 + 尾100字符
-            # 同时取首尾，避免页面固定区域（侧边栏、输入框提示）主导指纹，
-            # 保证切换到不同对话时指纹一定会发生变化
-            return self.driver.execute_script("""
-                var main = document.querySelector('main') || document.body;
-                var text = (main.innerText || '').trim();
-                return text.length + ':' + text.slice(0, 100) + '|' + text.slice(-100);
-            """) or ""
-        except Exception:
-            return ""
-
-    def _wait_conversation_loaded(self, url_id: str = "", old_fingerprint: str = "", timeout: float = 15.0) -> bool:
-        """
-        等待目标对话切换并加载完成
-
-        校验条件（按序满足才返回成功）：
-        1. URL 已切换到目标对话
-        2. 页面主体内容与切换前不同，说明新对话已渲染，而不是残留的上一个对话
-
-        Args:
-            url_id: 目标对话的 URL ID
-            old_fingerprint: 点击前的内容指纹
-            timeout: 最大等待时间（秒）
-
-        Returns:
-            页面是否已切换到目标对话且内容已刷新
-        """
-        import time
-
-        start_time = time.time()
-        url_ok = False
-        content_changed = False
-
-        while time.time() - start_time < timeout:
-            try:
-                if url_id:
-                    url_ok = url_id in self.driver.current_url
-                else:
-                    url_ok = '/a/chat/s/' in self.driver.current_url
-
-                if url_ok:
-                    new_fingerprint = self._get_content_fingerprint()
-                    if new_fingerprint and new_fingerprint != old_fingerprint:
-                        content_changed = True
-                        break
-            except Exception:
-                pass
-            time.sleep(0.3)
-
-        if not (url_ok and content_changed):
-            logger.warning(
-                f"等待对话加载超时: URL匹配={url_ok}, 内容已刷新={content_changed}, 目标ID={url_id}"
-            )
-            return False
-
-        # 内容刷新后再给一小段缓冲，确保消息全部挂载到 DOM
-        time.sleep(0.5)
-        return True
-
-    def _mark_retry(self, url_id: str) -> None:
-        """
-        将对话标记为下一轮重试
-
-        超过最大重试次数则放弃（标记为已处理），避免无限重试。
-        注意：新对话若处理失败又不进入重试集合，下一轮会因 last_conversations
-        已更新而不再被识别为新对话，导致该命令被永久跳过。
-
-        Args:
-            url_id: 对话的 URL ID
-        """
-        count = self.retry_counts.get(url_id, 0) + 1
-        self.retry_counts[url_id] = count
-
-        if count >= self.MAX_CONVERSATION_RETRY:
-            self.processed_conversations.add(url_id)
-            logger.warning(f"对话已重试 {count} 次仍未成功，放弃处理: {url_id}")
-            return
-
-        self.pending_retry.add(url_id)
-        logger.info(f"对话将在下一轮重试 ({count}/{self.MAX_CONVERSATION_RETRY}): {url_id}")
-
     def _get_latest_message(self) -> Optional[str]:
         """
-        获取最后一条用户消息（寻找包含@的命令）
+        获取当前对话最后一条 @ 命令（双路提取 + 交叉校验）
+
+        1. textContent 提取：遍历 DOM 取完整命令，不受 CSS 截断影响，
+           但可能取到侧边栏或其它对话残留的命令
+        2. 直接提取：只取「消息主体区域」的可见文本（innerText），
+           能确保内容属于当前对话，但长命令可能被 CSS 截断
+
+        只有 textContent 提取的完整命令包含直接提取的可见命令时，才确认它
+        属于当前对话并使用完整命令；否则以直接提取的结果为准（若以 @ 开头）。
 
         Returns:
-            消息文本，如果找不到则返回 None
+            以 @ 开头的命令消息；返回空字符串表示已确认该对话不含 @ 命令；
+            返回 None 表示页面存在 @ 文本但无法确认其归属当前对话
         """
         try:
             # 等待页面加载，确保消息内容已完全渲染
@@ -574,101 +466,151 @@ class DeepSeekMonitor:
             import time
             time.sleep(0.5)
 
-            # 方法0：通过 textContent 遍历 DOM 获取完整消息文本
+            # 方法0：通过 textContent 获取当前对话区域的最后一条消息
             # 注意：innerText 只返回可见渲染文本，长消息会被 CSS（line-clamp/省略号）截断，
             # 导致只能取到约 32 字符；textContent 则包含完整文本，不受渲染截断影响。
-            # 注意：必须限定在消息区域内取「最后一条」以 @ 开头的文本。旧逻辑遍历整个
-            # document.body 并取「最长」的一条，会取到侧边栏或上一个对话残留的命令。
+            # 关键修复：限定搜索范围为当前对话的消息容器，按DOM顺序取最后一条消息，
+            # 而非遍历整个页面取最长消息（后者会误取历史对话的旧命令）。
             full_message = self.driver.execute_script("""
-                // 判断是否位于需要排除的区域：侧边栏/导航（历史对话列表）、
-                // 对话链接、输入框，这些区域的 @ 文本都不是当前对话的用户命令
-                function inExcludedArea(el) {
-                    if (!el) return true;
-                    if (el.closest('aside, nav, header, footer')) return true;
-                    if (el.closest("a[href*='/a/chat/s/']")) return true;
-                    if (el.closest('textarea, [contenteditable="true"]')) return true;
-                    return false;
-                }
-                // TreeWalker 按文档顺序遍历，越靠后越接近页面底部（即最新消息），
-                // 因此从后往前取第一条「非 AI 回复」的候选作为用户命令
-                function pickLatest(candidates) {
-                    if (candidates.length === 0) return null;
-                    for (var i = candidates.length - 1; i >= 0; i--) {
-                        if (!candidates[i].isAi) return candidates[i].text;
+                // 查找当前对话的消息区域（主内容区，排除侧边栏）
+                var mainContent = document.querySelector('main') ||
+                                  document.querySelector('[role="main"]') ||
+                                  document.querySelector('.main') ||
+                                  document.body;
+
+                // 策略1：遍历用户消息气泡容器，从后往前找以 @ 开头的消息
+                var msgContainers = mainContent.querySelectorAll(
+                    '[class*="user-message"], [class*="userMessage"], [class*="message-user"],' +
+                    '[class*="assistant-message"], [class*="assistantMessage"], [class*="chat-item"],' +
+                    '[class*="bubble"], [class*="msg-"], [data-testid]'
+                );
+                for (var i = msgContainers.length - 1; i >= 0; i--) {
+                    var el = msgContainers[i];
+                    var text = el.textContent.trim();
+                    if (text.startsWith('@')) {
+                        var afterAt = text.slice(1).trim();
+                        // 过滤：真正的 bash 命令不含中文解释性描述
+                        var hasChineseExplain = /(?:帮我|请|需要|可以|怎么|如何|为什么|怎样|介绍|说明|解释|显示|列出|查看|运行|执行|打开|创建|新建|生成|输出|返回|显示|使用|调用|方法|格式|写法|示例|例子)/.test(afterAt);
+                        if (!hasChineseExplain && afterAt.length > 0 && afterAt.length < 200) {
+                            return text;
+                        }
                     }
-                    return candidates[candidates.length - 1].text;
                 }
 
-                var candidates = [];
+                // 策略2：TreeWalker 遍历所有文本节点
                 var walker = document.createTreeWalker(
-                    document.body,
+                    mainContent,
                     NodeFilter.SHOW_TEXT,
                     null,
                     false
                 );
                 var node;
+                var lastMatch = null;
                 while ((node = walker.nextNode())) {
-                    var t = (node.textContent || '').trim();
-                    if (t.length < 2 || t.charAt(0) !== '@') continue;
-                    var el = node.parentElement;
-                    if (inExcludedArea(el)) continue;
-                    candidates.push({text: t, isAi: !!el.closest('.ds-markdown')});
-                }
-                // 兜底：直接检查元素 textContent（处理 @ 被拆到多个文本节点的情况）
-                if (candidates.length === 0) {
-                    var elems = document.querySelectorAll('div, p, span, pre, code');
-                    for (var i = 0; i < elems.length; i++) {
-                        var t2 = (elems[i].textContent || '').trim();
-                        if (t2.length < 2 || t2.charAt(0) !== '@') continue;
-                        if (inExcludedArea(elems[i])) continue;
-                        candidates.push({text: t2, isAi: !!elems[i].closest('.ds-markdown')});
+                    var text = node.textContent;
+                    if (text && text.trim().startsWith('@') && text.trim().length > 1) {
+                        var trimmed = text.trim();
+                        var afterAt = trimmed.slice(1).trim();
+                        // 排除对话中间的说明性引用：
+                        // 1. @后紧跟中文解释词（帮我/请/方法/格式等）
+                        // 2. @后紧跟中文字符（如 '@cd 到某目录'）
+                        if (afterAt.length < 200 &&
+                            !/^(?:帮我|请|需要|可以|怎么|如何|为什么|怎样|介绍|说明|解释|显示|列出|查看|运行|执行|打开|创建|新建|生成|输出|返回|显示|使用|调用|方法|格式|写法|示例|例子)/.test(afterAt) &&
+                            !/^[\u4e00-\u9fa5]/.test(afterAt)) {
+                            lastMatch = trimmed;
+                        }
                     }
                 }
-                return pickLatest(candidates);
+
+                return lastMatch || null;
             """)
 
             if full_message:
                 # 去掉可能混入的页面无关空白，保留单行命令
                 full_message = ' '.join(full_message.split())
                 logger.info(f"通过 textContent 获取到完整消息（长度: {len(full_message)}）")
-                return full_message
 
-            # 使用 JavaScript 获取完整的页面文本，避免 Selenium text 属性的截断问题
-            body_text = self.driver.execute_script("return document.body.innerText;")
+            # 直接提取：只取消息主体区域的可见文本，确保内容属于当前对话
+            visible_message = self._extract_visible_command()
+            if visible_message:
+                visible_message = ' '.join(visible_message.split())
+                logger.info(f"直接提取到可见命令（长度: {len(visible_message)}）")
 
-            if not body_text:
+            # 交叉校验：textContent 提取的完整命令必须包含直接提取的可见命令，
+            # 否则说明它取的不是当前对话的内容（例如侧边栏或其它对话残留）
+            if full_message and visible_message:
+                if visible_message in full_message:
+                    logger.info("校验通过: textContent 提取的命令属于当前对话")
+                    return full_message
+                logger.warning(
+                    "校验未通过: textContent 提取的命令与当前对话可见命令不一致，改用可见命令"
+                )
+
+            # 以直接提取的结果为准（仅在其确实以 @ 开头时才执行）
+            if visible_message and visible_message.startswith('@'):
+                return visible_message
+
+            if full_message:
+                logger.warning("未能用当前对话可见文本确认命令归属，跳过执行")
                 return None
 
-            # 方法1：从body文本中查找以@开头的消息
-            lines = body_text.split('\n')
-            for line in reversed(lines):
-                line = line.strip()
-                # 查找包含@的命令（用户发送的消息）
-                if line.startswith('@') and len(line) > 1:
-                    return line
-
-            # 方法2：查找包含@的命令（可能在文本中间）
-            for line in reversed(lines):
-                line = line.strip()
-                # 跳过明显的非消息内容
-                if not line:
-                    continue
-                if len(line) < 3 or len(line) > 20000:
-                    continue
-                # 排除AI回复的关键词
-                exclude_words = ['Thought', 'DeepThink', 'Search', 'AI-generated',
-                                'for reference only', 'Continue', 'Download',
-                                'Copy', 'Edit', 'Regenerate']
-                if any(word in line for word in exclude_words):
-                    continue
-                # 检查是否包含@命令
-                if '@' in line and ('command' in line.lower() or 'bash' in line.lower() or '/' in line or '-' in line):
-                    return line
-
-            return None
+            # 两条路径都没有取到 @ 文本：确认该对话不是命令对话
+            return ""
 
         except Exception as e:
             logger.warning(f"获取消息时出错: {e}")
+            return None
+
+    def _extract_visible_command(self) -> Optional[str]:
+        """
+        从消息主体区域的可见文本中直接提取最后一条 @ 命令
+
+        与 textContent 提取的区别：
+        1. 先定位消息主体区域（不含对话链接的最大文本容器），侧边栏因为包含
+           对话链接会在逐层下钻时被跳过，保证取到的内容属于当前对话
+        2. 使用 innerText，只取页面真正渲染出来的内容；长命令会被 CSS 截断，
+           因此这里取到的可能只是完整命令的片段
+
+        Returns:
+            可见的命令文本，找不到时返回 None
+        """
+        try:
+            return self.driver.execute_script("""
+                // 定位消息主体区域：从 body 逐层下钻，找到「不包含对话链接
+                // 且文本最长」的容器，侧边栏因包含对话链接会被跳过
+                function findMainContainer() {
+                    var best = null;
+                    var bestLen = 0;
+                    function visit(el, depth) {
+                        if (!el || depth > 8) return;
+                        var hasLink = el.querySelector && el.querySelector("a[href*='/a/chat/s/']");
+                        if (!hasLink) {
+                            var len = (el.innerText || '').length;
+                            if (len > bestLen) { bestLen = len; best = el; }
+                            return;
+                        }
+                        for (var i = 0; i < el.children.length; i++) {
+                            visit(el.children[i], depth + 1);
+                        }
+                    }
+                    visit(document.body, 0);
+                    return best;
+                }
+
+                var main = findMainContainer();
+                var text = main ? (main.innerText || '') : (document.body.innerText || '');
+                var lines = text.split('\\n');
+                // 按文档顺序从后往前取，最后一条即页面上最新的消息
+                for (var i = lines.length - 1; i >= 0; i--) {
+                    var line = lines[i].trim();
+                    if (line.length > 1 && line.charAt(0) === '@') {
+                        return line;
+                    }
+                }
+                return null;
+            """)
+        except Exception as e:
+            logger.warning(f"直接提取可见命令时出错: {e}")
             return None
 
     def _execute_bash_command(self, command: str) -> tuple:
@@ -892,22 +834,14 @@ class DeepSeekMonitor:
                         current_url_ids = set(url_id for _, url_id in current_conversations)
                         new_url_ids = current_url_ids - self.last_conversations - self.processed_conversations
 
-                        # 每轮重新统计需要重试的对话
-                        self.pending_retry.clear()
-
                         if new_url_ids:
                             # 找到新对话的标题
                             new_conversations = [(title, url_id) for title, url_id in current_conversations if url_id in new_url_ids]
                             logger.info(f"发现 {len(new_conversations)} 个新对话")
 
                             for conv_title, conv_url_id in new_conversations[:3]:  # 限制处理最多3个新对话
-                                # 点击前记录当前页面内容指纹，用于确认页面确实切到了新对话
-                                old_fingerprint = self._get_content_fingerprint()
-
-                                # 点击新对话并等待页面真正切换完成，
-                                # 否则会读到上一个对话残留的消息，导致执行错误的命令
-                                if self._click_conversation(conv_title, conv_url_id) and \
-                                        self._wait_conversation_loaded(conv_url_id, old_fingerprint):
+                                # 点击新对话
+                                if self._click_conversation(conv_title):
                                     # 获取最新消息
                                     message = self._get_latest_message()
 
@@ -951,23 +885,25 @@ class DeepSeekMonitor:
                                             time.sleep(2)
 
                                         logger.info(f"已处理并回复对话: {conv_title}")
+                                    elif message is None:
+                                        # 页面存在 @ 文本但无法确认归属当前对话，
+                                        # 不标记为已处理，留到下一轮重试，避免命令丢失
+                                        logger.warning(f"对话 '{conv_title}' 未能确认命令归属，本轮不处理")
+                                        self._mark_retry(conv_url_id)
+                                        continue
                                     else:
-                                        logger.info(f"对话 '{conv_title}' 的消息不以 @ 开头，跳过")
+                                        # 返回空字符串表示已确认该对话不含 @ 命令
+                                        logger.info(f"对话 '{conv_title}' 不含 @ 命令，跳过")
 
                                     # 处理完标记为已处理，避免重复检查（使用URL ID）
                                     self.processed_conversations.add(conv_url_id)
                                     logger.info(f"已标记对话为已处理: {conv_title} (ID: {conv_url_id})")
-                                else:
-                                    # 页面未切换完成时不提取命令，避免读到上一个对话的消息
-                                    logger.warning(f"对话 '{conv_title}' 未能切换完成，本轮不处理")
-                                    self._mark_retry(conv_url_id)
                         else:
                             logger.info("未检测到新对话")
 
                     # 更新上一秒的对话列表（存储URL ID）
-                    # 需要重试的对话不写入，保证下一轮仍能被识别为新对话
                     current_url_ids = set(url_id for _, url_id in current_conversations)
-                    self.last_conversations = current_url_ids - self.pending_retry
+                    self.last_conversations = current_url_ids
                     reconnect_count = 0  # 重置重连计数
 
                 except Exception as e:
