@@ -441,12 +441,16 @@ class DeepSeekMonitor:
             logger.error(f"点击对话时出错: {e}")
             return False
 
-    def _get_latest_message(self) -> Optional[str]:
+    def _get_latest_message(self, fallback_title: str = "") -> Optional[str]:
         """
         获取当前对话最后一条 @ 命令
 
-        通过 textContent 遍历 DOM 取完整命令，不受 CSS 截断影响。
-        限定搜索范围为当前对话的消息容器，按 DOM 顺序取最后一条以 @ 开头的消息。
+        使用 TreeWalker 遍历页面所有文本节点，查找以 @ 开头的用户命令消息。
+        不依赖特定 CSS class 名称，兼容 DeepSeek 界面结构变更。
+        优先从消息气泡容器取完整文本；TreeWalker 无结果时回退到对话标题。
+
+        Args:
+            fallback_title: 当 DOM 解析失败时的回退标题（通常即对话标题）
 
         Returns:
             以 @ 开头的命令消息；返回空字符串表示已确认该对话不含 @ 命令；
@@ -461,32 +465,29 @@ class DeepSeekMonitor:
             time.sleep(0.5)
 
             message = self.driver.execute_script("""
-                // 查找当前对话的消息区域（主内容区，排除侧边栏）
+                // ---- 辅助：验证提取的文本是否像一条完整的 @ 命令 ----
+                function isValidCommand(text) {
+                    if (!text || !text.trim().startsWith('@')) return false;
+                    var t = text.trim();
+                    var afterAt = t.slice(1).trim();
+                    if (afterAt.length === 0 || afterAt.length >= 200) return false;
+                    // 过滤：命令前缀含中文解释性描述（如 '@帮我列出...'）
+                    if (/^(?:帮我|请|需要|可以|怎么|如何|为什么|怎样|介绍|说明|解释|显示|列出|查看|运行|执行|打开|创建|新建|生成|输出|返回|使用|调用|方法|格式|写法|示例|例子)/.test(afterAt)) return false;
+                    // 过滤：@ 后紧跟中文字符（如 '@cd 到某目录'）
+                    if (/^[\u4e00-\u9fa5]/.test(afterAt)) return false;
+                    // 过滤：系统提示类消息（含 <system> 等标记）
+                    if (/^<system/i.test(t)) return false;
+                    return true;
+                }
+
                 var mainContent = document.querySelector('main') ||
                                   document.querySelector('[role="main"]') ||
                                   document.querySelector('.main') ||
                                   document.body;
 
-                // 策略1：遍历用户消息气泡容器，从后往前找以 @ 开头的消息
-                var msgContainers = mainContent.querySelectorAll(
-                    '[class*="user-message"], [class*="userMessage"], [class*="message-user"],' +
-                    '[class*="assistant-message"], [class*="assistantMessage"], [class*="chat-item"],' +
-                    '[class*="bubble"], [class*="msg-"], [data-testid]'
-                );
-                for (var i = msgContainers.length - 1; i >= 0; i--) {
-                    var el = msgContainers[i];
-                    var text = el.textContent.trim();
-                    if (text.startsWith('@')) {
-                        var afterAt = text.slice(1).trim();
-                        // 过滤：真正的 bash 命令不含中文解释性描述
-                        var hasChineseExplain = /(?:帮我|请|需要|可以|怎么|如何|为什么|怎样|介绍|说明|解释|显示|列出|查看|运行|执行|打开|创建|新建|生成|输出|返回|显示|使用|调用|方法|格式|写法|示例|例子)/.test(afterAt);
-                        if (!hasChineseExplain && afterAt.length > 0 && afterAt.length < 200) {
-                            return text;
-                        }
-                    }
-                }
-
-                // 策略2：TreeWalker 遍历所有文本节点
+                // ---- 策略 1：TreeWalker 遍历所有文本节点，从后往前找最后一条 @ 命令 ----
+                // TreeWalker 不受 CSS 截断影响，能取到 element.textContent 的完整内容
+                var lastCmd = null;
                 var walker = document.createTreeWalker(
                     mainContent,
                     NodeFilter.SHOW_TEXT,
@@ -494,30 +495,36 @@ class DeepSeekMonitor:
                     false
                 );
                 var node;
-                var lastMatch = null;
                 while ((node = walker.nextNode())) {
-                    var text = node.textContent;
-                    if (text && text.trim().startsWith('@') && text.trim().length > 1) {
-                        var trimmed = text.trim();
-                        var afterAt = trimmed.slice(1).trim();
-                        // 排除对话中间的说明性引用：
-                        // 1. @后紧跟中文解释词（帮我/请/方法/格式等）
-                        // 2. @后紧跟中文字符（如 '@cd 到某目录'）
-                        if (afterAt.length < 200 &&
-                            !/^(?:帮我|请|需要|可以|怎么|如何|为什么|怎样|介绍|说明|解释|显示|列出|查看|运行|执行|打开|创建|新建|生成|输出|返回|显示|使用|调用|方法|格式|写法|示例|例子)/.test(afterAt) &&
-                            !/^[\\u4e00-\\u9fa5]/.test(afterAt)) {
-                            lastMatch = trimmed;
-                        }
+                    var txt = node.textContent.trim();
+                    if (isValidCommand(txt)) {
+                        lastCmd = txt;
+                    }
+                }
+                if (lastCmd) return lastCmd;
+
+                // ---- 策略 2：扫描直接含 @ 开头文本的元素（兼容动态渲染） ----
+                var allEls = mainContent.querySelectorAll('*');
+                for (var i = allEls.length - 1; i >= 0; i--) {
+                    var el = allEls[i];
+                    var elText = el.textContent.trim();
+                    if (isValidCommand(elText)) {
+                        return elText;
                     }
                 }
 
-                return lastMatch || null;
+                return null;
             """)
 
             if message:
                 message = ' '.join(message.split())
-                logger.info(f"获取到命令消息（长度: {len(message)}）")
+                logger.info(f"获取到命令消息（长度: {len(message)}）: {message[:80]}")
                 return message
+
+            # DOM 未找到 @ 消息，尝试使用对话标题作为回退
+            if fallback_title and fallback_title.startswith('@'):
+                logger.info(f"DOM 未找到命令消息，使用对话标题作为回退: {fallback_title}")
+                return fallback_title
 
             # 未取到 @ 文本：确认该对话不是命令对话
             return ""
@@ -755,8 +762,8 @@ class DeepSeekMonitor:
                             for conv_title, conv_url_id in new_conversations[:3]:  # 限制处理最多3个新对话
                                 # 点击新对话
                                 if self._click_conversation(conv_title):
-                                    # 获取最新消息
-                                    message = self._get_latest_message()
+                                    # 获取最新消息（传入标题作为回退）
+                                    message = self._get_latest_message(fallback_title=conv_title)
 
                                     if message and message.startswith("@"):
                                         # 提取命令
