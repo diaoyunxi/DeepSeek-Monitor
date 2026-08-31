@@ -443,35 +443,24 @@ class DeepSeekMonitor:
 
     def _get_latest_message(self) -> Optional[str]:
         """
-        获取当前对话最后一条 @ 命令（双路提取 + 交叉校验）
+        获取当前对话最后一条 @ 命令
 
-        1. textContent 提取：遍历 DOM 取完整命令，不受 CSS 截断影响，
-           但可能取到侧边栏或其它对话残留的命令
-        2. 直接提取：只取「消息主体区域」的可见文本（innerText），
-           能确保内容属于当前对话，但长命令可能被 CSS 截断
-
-        只有 textContent 提取的完整命令包含直接提取的可见命令时，才确认它
-        属于当前对话并使用完整命令；否则以直接提取的结果为准（若以 @ 开头）。
+        通过 textContent 遍历 DOM 取完整命令，不受 CSS 截断影响。
+        限定搜索范围为当前对话的消息容器，按 DOM 顺序取最后一条以 @ 开头的消息。
 
         Returns:
             以 @ 开头的命令消息；返回空字符串表示已确认该对话不含 @ 命令；
-            返回 None 表示页面存在 @ 文本但无法确认其归属当前对话
+            返回 None 表示发生异常需重试
         """
         try:
             # 等待页面加载，确保消息内容已完全渲染
             WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.TAG_NAME, "body"))
             )
-            # 等待页面动态内容加载完成
             import time
             time.sleep(0.5)
 
-            # 方法0：通过 textContent 获取当前对话区域的最后一条消息
-            # 注意：innerText 只返回可见渲染文本，长消息会被 CSS（line-clamp/省略号）截断，
-            # 导致只能取到约 32 字符；textContent 则包含完整文本，不受渲染截断影响。
-            # 关键修复：限定搜索范围为当前对话的消息容器，按DOM顺序取最后一条消息，
-            # 而非遍历整个页面取最长消息（后者会误取历史对话的旧命令）。
-            full_message = self.driver.execute_script("""
+            message = self.driver.execute_script("""
                 // 查找当前对话的消息区域（主内容区，排除侧边栏）
                 var mainContent = document.querySelector('main') ||
                                   document.querySelector('[role="main"]') ||
@@ -516,7 +505,7 @@ class DeepSeekMonitor:
                         // 2. @后紧跟中文字符（如 '@cd 到某目录'）
                         if (afterAt.length < 200 &&
                             !/^(?:帮我|请|需要|可以|怎么|如何|为什么|怎样|介绍|说明|解释|显示|列出|查看|运行|执行|打开|创建|新建|生成|输出|返回|显示|使用|调用|方法|格式|写法|示例|例子)/.test(afterAt) &&
-                            !/^[\u4e00-\u9fa5]/.test(afterAt)) {
+                            !/^[\\u4e00-\\u9fa5]/.test(afterAt)) {
                             lastMatch = trimmed;
                         }
                     }
@@ -525,92 +514,16 @@ class DeepSeekMonitor:
                 return lastMatch || null;
             """)
 
-            if full_message:
-                # 去掉可能混入的页面无关空白，保留单行命令
-                full_message = ' '.join(full_message.split())
-                logger.info(f"通过 textContent 获取到完整消息（长度: {len(full_message)}）")
+            if message:
+                message = ' '.join(message.split())
+                logger.info(f"获取到命令消息（长度: {len(message)}）")
+                return message
 
-            # 直接提取：只取消息主体区域的可见文本，确保内容属于当前对话
-            visible_message = self._extract_visible_command()
-            if visible_message:
-                visible_message = ' '.join(visible_message.split())
-                logger.info(f"直接提取到可见命令（长度: {len(visible_message)}）")
-
-            # 交叉校验：textContent 提取的完整命令必须包含直接提取的可见命令，
-            # 否则说明它取的不是当前对话的内容（例如侧边栏或其它对话残留）
-            if full_message and visible_message:
-                if visible_message in full_message:
-                    logger.info("校验通过: textContent 提取的命令属于当前对话")
-                    return full_message
-                logger.warning(
-                    "校验未通过: textContent 提取的命令与当前对话可见命令不一致，改用可见命令"
-                )
-
-            # 以直接提取的结果为准（仅在其确实以 @ 开头时才执行）
-            if visible_message and visible_message.startswith('@'):
-                return visible_message
-
-            if full_message:
-                logger.warning("未能用当前对话可见文本确认命令归属，跳过执行")
-                return None
-
-            # 两条路径都没有取到 @ 文本：确认该对话不是命令对话
+            # 未取到 @ 文本：确认该对话不是命令对话
             return ""
 
         except Exception as e:
             logger.warning(f"获取消息时出错: {e}")
-            return None
-
-    def _extract_visible_command(self) -> Optional[str]:
-        """
-        从消息主体区域的可见文本中直接提取最后一条 @ 命令
-
-        与 textContent 提取的区别：
-        1. 先定位消息主体区域（不含对话链接的最大文本容器），侧边栏因为包含
-           对话链接会在逐层下钻时被跳过，保证取到的内容属于当前对话
-        2. 使用 innerText，只取页面真正渲染出来的内容；长命令会被 CSS 截断，
-           因此这里取到的可能只是完整命令的片段
-
-        Returns:
-            可见的命令文本，找不到时返回 None
-        """
-        try:
-            return self.driver.execute_script("""
-                // 定位消息主体区域：从 body 逐层下钻，找到「不包含对话链接
-                // 且文本最长」的容器，侧边栏因包含对话链接会被跳过
-                function findMainContainer() {
-                    var best = null;
-                    var bestLen = 0;
-                    function visit(el, depth) {
-                        if (!el || depth > 8) return;
-                        var hasLink = el.querySelector && el.querySelector("a[href*='/a/chat/s/']");
-                        if (!hasLink) {
-                            var len = (el.innerText || '').length;
-                            if (len > bestLen) { bestLen = len; best = el; }
-                            return;
-                        }
-                        for (var i = 0; i < el.children.length; i++) {
-                            visit(el.children[i], depth + 1);
-                        }
-                    }
-                    visit(document.body, 0);
-                    return best;
-                }
-
-                var main = findMainContainer();
-                var text = main ? (main.innerText || '') : (document.body.innerText || '');
-                var lines = text.split('\\n');
-                // 按文档顺序从后往前取，最后一条即页面上最新的消息
-                for (var i = lines.length - 1; i >= 0; i--) {
-                    var line = lines[i].trim();
-                    if (line.length > 1 && line.charAt(0) === '@') {
-                        return line;
-                    }
-                }
-                return null;
-            """)
-        except Exception as e:
-            logger.warning(f"直接提取可见命令时出错: {e}")
             return None
 
     def _execute_bash_command(self, command: str) -> tuple:
@@ -886,10 +799,8 @@ class DeepSeekMonitor:
 
                                         logger.info(f"已处理并回复对话: {conv_title}")
                                     elif message is None:
-                                        # 页面存在 @ 文本但无法确认归属当前对话，
-                                        # 不标记为已处理，留到下一轮重试，避免命令丢失
-                                        logger.warning(f"对话 '{conv_title}' 未能确认命令归属，本轮不处理")
-                                        self._mark_retry(conv_url_id)
+                                        # 获取消息时发生异常，不标记为已处理，留到下一轮重试
+                                        logger.warning(f"对话 '{conv_title}' 获取消息异常，本轮跳过")
                                         continue
                                     else:
                                         # 返回空字符串表示已确认该对话不含 @ 命令
