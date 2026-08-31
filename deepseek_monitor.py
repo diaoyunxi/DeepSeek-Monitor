@@ -445,19 +445,19 @@ class DeepSeekMonitor:
         """
         获取当前对话最后一条 @ 命令
 
-        使用 TreeWalker 遍历页面所有文本节点，查找以 @ 开头的用户命令消息。
-        不依赖特定 CSS class 名称，兼容 DeepSeek 界面结构变更。
-        优先从消息气泡容器取完整文本；TreeWalker 无结果时回退到对话标题。
+        策略优先级：
+        1. 定位对话气泡容器（按从后往前顺序），取容器完整 textContent 校验
+        2. TreeWalker 遍历文本节点（兼容边界情况）
+        3. 回退到对话标题
 
         Args:
-            fallback_title: 当 DOM 解析失败时的回退标题（通常即对话标题）
+            fallback_title: 当 DOM 解析失败时的回退标题
 
         Returns:
-            以 @ 开头的命令消息；返回空字符串表示已确认该对话不含 @ 命令；
+            以 @ 开头的命令消息；返回空字符串表示不含 @ 命令；
             返回 None 表示发生异常需重试
         """
         try:
-            # 等待页面加载，确保消息内容已完全渲染
             WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.TAG_NAME, "body"))
             )
@@ -465,17 +465,14 @@ class DeepSeekMonitor:
             time.sleep(0.5)
 
             message = self.driver.execute_script("""
-                // ---- 辅助：验证提取的文本是否像一条完整的 @ 命令 ----
+                // ---- 校验：文本是否为一条完整的 @ 命令 ----
                 function isValidCommand(text) {
                     if (!text || !text.trim().startsWith('@')) return false;
                     var t = text.trim();
                     var afterAt = t.slice(1).trim();
                     if (afterAt.length === 0 || afterAt.length >= 200) return false;
-                    // 过滤：命令前缀含中文解释性描述（如 '@帮我列出...'）
                     if (/^(?:帮我|请|需要|可以|怎么|如何|为什么|怎样|介绍|说明|解释|显示|列出|查看|运行|执行|打开|创建|新建|生成|输出|返回|使用|调用|方法|格式|写法|示例|例子)/.test(afterAt)) return false;
-                    // 过滤：@ 后紧跟中文字符（如 '@cd 到某目录'）
                     if (/^[\u4e00-\u9fa5]/.test(afterAt)) return false;
-                    // 过滤：系统提示类消息（含 <system> 等标记）
                     if (/^<system/i.test(t)) return false;
                     return true;
                 }
@@ -485,28 +482,30 @@ class DeepSeekMonitor:
                                   document.querySelector('.main') ||
                                   document.body;
 
-                // ---- 策略 1：TreeWalker 遍历所有文本节点，从后往前找最后一条 @ 命令 ----
-                // TreeWalker 不受 CSS 截断影响，能取到 element.textContent 的完整内容
-                var lastCmd = null;
-                var walker = document.createTreeWalker(
-                    mainContent,
-                    NodeFilter.SHOW_TEXT,
-                    null,
-                    false
+                // ---- 策略 1：定位消息气泡容器，从后往前取完整文本 ----
+                // 关键：一个消息气泡可能包含多个子元素（<pre><code>等），
+                // 必须取整个容器的 textContent，不能只取单个文本节点。
+                var bubbles = mainContent.querySelectorAll(
+                    '[class*="message"], [class*="bubble"], [class*="chat-item"], [class*="msg-"]'
                 );
-                var node;
-                while ((node = walker.nextNode())) {
-                    var txt = node.textContent.trim();
-                    if (isValidCommand(txt)) {
-                        lastCmd = txt;
+                for (var i = bubbles.length - 1; i >= 0; i--) {
+                    var bubble = bubbles[i];
+                    // 跳过 assistant / AI 回复容器
+                    var cls = (bubble.className || '').toLowerCase();
+                    if (cls.indexOf('assistant') !== -1 || cls.indexOf('ai ') !== -1 ||
+                        cls.indexOf('ai-message') !== -1 || cls.indexOf('ai_response') !== -1) {
+                        continue;
+                    }
+                    var bubbleText = bubble.textContent.trim();
+                    if (isValidCommand(bubbleText)) {
+                        return bubbleText;
                     }
                 }
-                if (lastCmd) return lastCmd;
 
-                // ---- 策略 2：扫描直接含 @ 开头文本的元素（兼容动态渲染） ----
+                // ---- 策略 2：反向扫描所有块级/内联元素，取完整文本 ----
                 var allEls = mainContent.querySelectorAll('*');
-                for (var i = allEls.length - 1; i >= 0; i--) {
-                    var el = allEls[i];
+                for (var j = allEls.length - 1; j >= 0; j--) {
+                    var el = allEls[j];
                     var elText = el.textContent.trim();
                     if (isValidCommand(elText)) {
                         return elText;
@@ -521,12 +520,10 @@ class DeepSeekMonitor:
                 logger.info(f"获取到命令消息（长度: {len(message)}）: {message[:80]}")
                 return message
 
-            # DOM 未找到 @ 消息，尝试使用对话标题作为回退
             if fallback_title and fallback_title.startswith('@'):
                 logger.info(f"DOM 未找到命令消息，使用对话标题作为回退: {fallback_title}")
                 return fallback_title
 
-            # 未取到 @ 文本：确认该对话不是命令对话
             return ""
 
         except Exception as e:
