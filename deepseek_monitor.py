@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 DeepSeek 对话监控与命令执行工具
 ================================
@@ -10,20 +9,19 @@ DeepSeek 对话监控与命令执行工具
 import json
 import logging
 import subprocess
-from typing import Optional
 
 from selenium import webdriver
+from selenium.common.exceptions import (
+    NoSuchElementException,
+    StaleElementReferenceException,
+    TimeoutException,
+)
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import (
-    TimeoutException,
-    NoSuchElementException,
-    StaleElementReferenceException,
-)
+from selenium.webdriver.support.ui import WebDriverWait
 
 # 配置日志
 logging.basicConfig(
@@ -51,7 +49,7 @@ class DeepSeekMonitor:
             config_path: 配置文件路径，包含 phone、code 和 profile_dir
         """
         self.config = self._load_config(config_path)
-        self.driver: Optional[webdriver.Chrome] = None
+        self.driver: webdriver.Chrome | None = None
         self.last_conversations: set = set()  # 上一秒的对话集合（存储url_id）
         self.processed_conversations: set = set()  # 已处理过的对话集合（存储url_id）
         self.is_first_run: bool = True  # 是否首次运行
@@ -441,7 +439,7 @@ class DeepSeekMonitor:
             logger.error(f"点击对话时出错: {e}")
             return False
 
-    def _get_latest_message(self, fallback_title: str = "") -> Optional[str]:
+    def _get_latest_message(self, fallback_title: str = "") -> str | None:
         """
         获取当前对话最后一条 @ 命令
 
@@ -569,6 +567,7 @@ class DeepSeekMonitor:
         """
         try:
             import time
+
             from selenium.webdriver.common.action_chains import ActionChains
 
             # 记录发送前的URL，用于检测页面跳转
@@ -600,7 +599,7 @@ class DeepSeekMonitor:
                         .send_keys(Keys.ENTER) \
                         .key_up(Keys.SHIFT) \
                         .perform()
-            logger.info(f"文本已设置（共 {len(lines)} 行）: {repr(response_text[:30])}...")
+            logger.info(f"文本已设置（共 {len(lines)} 行）: {response_text[:30]!r}...")
 
             time.sleep(0.5)
 
@@ -707,7 +706,7 @@ class DeepSeekMonitor:
                     logger.info("验证通过: 消息已发送成功")
                     return True
 
-            except Exception as e:
+            except Exception:
                 pass
             time.sleep(check_interval)
 
