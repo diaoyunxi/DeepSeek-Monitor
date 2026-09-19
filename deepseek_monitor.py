@@ -71,7 +71,7 @@ class DeepSeekMonitor:
             login_type = config.get("login_type", "code")
             if login_type == "password" and "password" not in config:
                 raise ValueError("密码登录模式需要 password 字段")
-            elif login_type == "code" and "code" not in config:
+            if login_type == "code" and "code" not in config:
                 raise ValueError("验证码登录模式需要 code 字段")
             logger.info(f"成功加载配置文件: {config_path}")
             return config
@@ -164,9 +164,7 @@ class DeepSeekMonitor:
                 return False
             # 尝试获取页面标题或内容判断
             title = self.driver.title.lower()
-            if "deepseek" in title and "log in" not in title:
-                return True
-            return False
+            return "deepseek" in title and "log in" not in title
         except Exception:
             return False
 
@@ -652,7 +650,6 @@ class DeepSeekMonitor:
             if sent:
                 logger.info("已发送回复")
                 return True
-            else:
                 logger.error("所有发送策略均失败")
                 return False
 
@@ -707,7 +704,7 @@ class DeepSeekMonitor:
                     logger.info("验证通过: 消息已发送成功")
                     return True
 
-            except Exception as e:
+            except Exception:
                 pass
             time.sleep(check_interval)
 
