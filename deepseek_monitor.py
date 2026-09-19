@@ -92,7 +92,8 @@ class DeepSeekMonitor:
             subprocess.run(
                 "pkill -9 -f 'chrome|chromedriver' 2>/dev/null || true",
                 shell=True,
-                capture_output=True
+                capture_output=True,
+                check=False
             )
             logger.info("Chrome 进程清理完成")
         except Exception as e:
@@ -547,7 +548,8 @@ class DeepSeekMonitor:
                 ['bash', '-c', command],
                 capture_output=True,
                 text=True,
-                timeout=60  # 60秒超时
+                timeout=60,  # 60秒超时
+                check=False
             )
             return result.stdout, result.stderr, result.returncode
         except subprocess.TimeoutExpired:
