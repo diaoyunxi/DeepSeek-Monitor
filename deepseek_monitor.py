@@ -73,13 +73,13 @@ class DeepSeekMonitor:
                 raise ValueError("密码登录模式需要 password 字段")
             elif login_type == "code" and "code" not in config:
                 raise ValueError("验证码登录模式需要 code 字段")
-            logger.info(f"成功加载配置文件: {config_path}")
+            logger.info("成功加载配置文件: %s", config_path)
             return config
         except FileNotFoundError:
-            logger.error(f"配置文件不存在: {config_path}")
+            logger.error("配置文件不存在: %s", config_path)
             raise
         except json.JSONDecodeError as e:
-            logger.error(f"配置文件 JSON 解析错误: {e}")
+            logger.error("配置文件 JSON 解析错误: %s", e)
             raise
 
     def _kill_stale_processes(self):
@@ -96,7 +96,7 @@ class DeepSeekMonitor:
             )
             logger.info("Chrome 进程清理完成")
         except Exception as e:
-            logger.warning(f"清理进程时出错: {e}")
+            logger.warning("清理进程时出错: %s", e)
 
     def _setup_driver(self) -> webdriver.Chrome:
         """
@@ -153,7 +153,7 @@ class DeepSeekMonitor:
             return self._perform_login()
 
         except Exception as e:
-            logger.error(f"登录过程中发生错误: {e}")
+            logger.error("登录过程中发生错误: %s", e)
             return False
 
     def _is_logged_in(self) -> bool:
@@ -228,10 +228,10 @@ class DeepSeekMonitor:
             logger.error("登录超时，请检查账号信息是否正确")
             return False
         except NoSuchElementException as e:
-            logger.error(f"找不到登录元素: {e}")
+            logger.error("找不到登录元素: %s", e)
             return False
         except Exception as e:
-            logger.error(f"登录过程中发生未知错误: {e}")
+            logger.error("登录过程中发生未知错误: %s", e)
             return False
 
     def _click_password_login(self) -> bool:
@@ -277,7 +277,7 @@ class DeepSeekMonitor:
             return False
 
         except Exception as e:
-            logger.error(f"点击密码登录按钮时出错: {e}")
+            logger.error("点击密码登录按钮时出错: %s", e)
             return False
 
     def _click_login_button(self) -> bool:
@@ -314,7 +314,7 @@ class DeepSeekMonitor:
             return False
 
         except Exception as e:
-            logger.error(f"点击登录按钮时出错: {e}")
+            logger.error("点击登录按钮时出错: %s", e)
             return False
 
     def _get_conversations(self) -> list:
@@ -402,7 +402,7 @@ class DeepSeekMonitor:
             return conversations
 
         except Exception as e:
-            logger.warning(f"获取对话列表时出错: {e}")
+            logger.warning("获取对话列表时出错: %s", e)
             return conversations
 
     def _click_conversation(self, title: str) -> bool:
@@ -427,18 +427,18 @@ class DeepSeekMonitor:
                     elem_text = elem.text.strip()
                     if title in elem_text or elem_text == title:
                         elem.click()
-                        logger.info(f"已点击对话: {title}")
+                        logger.info("已点击对话: %s", title)
                         # 等待页面加载
                         
                         return True
                 except (NoSuchElementException, StaleElementReferenceException):
                     continue
 
-            logger.warning(f"未找到对话: {title}")
+            logger.warning("未找到对话: %s", title)
             return False
 
         except Exception as e:
-            logger.error(f"点击对话时出错: {e}")
+            logger.error("点击对话时出错: %s", e)
             return False
 
     def _get_latest_message(self, fallback_title: str = "") -> Optional[str]:
@@ -517,17 +517,17 @@ class DeepSeekMonitor:
 
             if message:
                 message = ' '.join(message.split())
-                logger.info(f"获取到命令消息（长度: {len(message)}）: {message[:80]}")
+                logger.info("获取到命令消息（长度: %s）: {message[:80]}", len(message))
                 return message
 
             if fallback_title and fallback_title.startswith('@'):
-                logger.info(f"DOM 未找到命令消息，使用对话标题作为回退: {fallback_title}")
+                logger.info("DOM 未找到命令消息，使用对话标题作为回退: %s", fallback_title)
                 return fallback_title
 
             return ""
 
         except Exception as e:
-            logger.warning(f"获取消息时出错: {e}")
+            logger.warning("获取消息时出错: %s", e)
             return None
 
     def _execute_bash_command(self, command: str) -> tuple:
@@ -540,7 +540,7 @@ class DeepSeekMonitor:
         Returns:
             (stdout, stderr, returncode) 元组
         """
-        logger.info(f"执行命令: {command}")
+        logger.info("执行命令: %s", command)
         try:
             # 使用 bash -c 执行，确保参数正确传递
             result = subprocess.run(
@@ -551,10 +551,10 @@ class DeepSeekMonitor:
             )
             return result.stdout, result.stderr, result.returncode
         except subprocess.TimeoutExpired:
-            logger.error(f"命令执行超时: {command}")
+            logger.error("命令执行超时: %s", command)
             return "", "命令执行超时", 1
         except Exception as e:
-            logger.error(f"命令执行出错: {e}")
+            logger.error("命令执行出错: %s", e)
             return "", str(e), 1
 
     def _send_response(self, response_text: str) -> bool:
@@ -573,7 +573,7 @@ class DeepSeekMonitor:
 
             # 记录发送前的URL，用于检测页面跳转
             url_before = self.driver.current_url
-            logger.info(f"发送前URL: {url_before}")
+            logger.info("发送前URL: %s", url_before)
 
             # 等待输入框加载并可见
             input_box = WebDriverWait(self.driver, 10).until(
@@ -600,7 +600,7 @@ class DeepSeekMonitor:
                         .send_keys(Keys.ENTER) \
                         .key_up(Keys.SHIFT) \
                         .perform()
-            logger.info(f"文本已设置（共 {len(lines)} 行）: {repr(response_text[:30])}...")
+            logger.info("文本已设置（共 %s 行）: {repr(response_text[:30])}...", len(lines))
 
             time.sleep(0.5)
 
@@ -622,7 +622,7 @@ class DeepSeekMonitor:
                         sent = True
                         logger.info("策略1成功")
                 except Exception as e:
-                    logger.error(f"策略1失败: {e}")
+                    logger.error("策略1失败: %s", e)
 
             # 策略2: 使用JavaScript触发keydown事件（备用）
             if not sent:
@@ -641,13 +641,13 @@ class DeepSeekMonitor:
                         }
                         return 'not found';
                     """)
-                    logger.info(f"策略2 JS结果: {result}")
+                    logger.info("策略2 JS结果: %s", result)
                     time.sleep(2)
                     if self._verify_send_success(response_text, url_before):
                         sent = True
                         logger.info("策略2成功")
                 except Exception as e:
-                    logger.error(f"策略2失败: {e}")
+                    logger.error("策略2失败: %s", e)
 
             if sent:
                 logger.info("已发送回复")
@@ -657,7 +657,7 @@ class DeepSeekMonitor:
                 return False
 
         except Exception as e:
-            logger.error(f"发送回复时出错: {e}")
+            logger.error("发送回复时出错: %s", e)
             import traceback
             logger.error(traceback.format_exc())
             return False
@@ -711,7 +711,7 @@ class DeepSeekMonitor:
                 pass
             time.sleep(check_interval)
 
-        logger.warning(f"验证失败: 在{timeout}秒内未检测到发送成功的证据")
+        logger.warning("验证失败: 在%s秒内未检测到发送成功的证据", timeout)
         return False
 
     def run(self):
@@ -742,7 +742,7 @@ class DeepSeekMonitor:
 
                     if self.is_first_run:
                         # 首次运行：缓存所有现有对话，不处理
-                        logger.info(f"首次运行，缓存 {len(current_conversations)} 个现有对话")
+                        logger.info("首次运行，缓存 %s 个现有对话", len(current_conversations))
                         self.last_conversations = set(url_id for _, url_id in current_conversations)
                         self.processed_conversations = set(url_id for _, url_id in current_conversations)
                         self.is_first_run = False
@@ -754,7 +754,7 @@ class DeepSeekMonitor:
                         if new_url_ids:
                             # 找到新对话的标题
                             new_conversations = [(title, url_id) for title, url_id in current_conversations if url_id in new_url_ids]
-                            logger.info(f"发现 {len(new_conversations)} 个新对话")
+                            logger.info("发现 %s 个新对话", len(new_conversations))
 
                             for conv_title, conv_url_id in new_conversations[:3]:  # 限制处理最多3个新对话
                                 # 点击新对话
@@ -765,11 +765,11 @@ class DeepSeekMonitor:
                                     if message and message.startswith("@"):
                                         # 提取命令
                                         command = message[1:].strip()  # 去掉 @ 符号
-                                        logger.info(f"检测到 @ 命令: {command}")
+                                        logger.info("检测到 @ 命令: %s", command)
 
                                         # 执行命令
                                         stdout, stderr, returncode = self._execute_bash_command(command)
-                                        logger.info(f"命令执行完成，返回码: {returncode}")
+                                        logger.info("命令执行完成，返回码: %s", returncode)
 
                                         # 构造回复内容（不带前缀，保留换行）
                                         # 命令执行完成但没有任何输出时，统一回复 no output
@@ -790,29 +790,29 @@ class DeepSeekMonitor:
                                             # 执行失败：回复 stderr；
                                             # 无错误输出时回复“执行失败: no output”，保留失败状态说明
                                             response = f"执行失败: {stderr_text if stderr_text else 'no output'}"
-                                        logger.info(f"执行结果预览: {response[:100]}{'...' if len(response) > 100 else ''}")
+                                        logger.info("执行结果预览: %s{'...' if len(response) > 100 else ''}", response[:100])
 
                                         # 发送回复
                                         send_result = self._send_response(response)
-                                        logger.info(f"发送回复完成: {'成功' if send_result else '失败'}")
+                                        logger.info("发送回复完成: %s", '成功' if send_result else '失败')
 
                                         if send_result:
                                             # 等待2秒，确保回复已提交
                                             import time
                                             time.sleep(2)
 
-                                        logger.info(f"已处理并回复对话: {conv_title}")
+                                        logger.info("已处理并回复对话: %s", conv_title)
                                     elif message is None:
                                         # 获取消息时发生异常，不标记为已处理，留到下一轮重试
-                                        logger.warning(f"对话 '{conv_title}' 获取消息异常，本轮跳过")
+                                        logger.warning("对话 '%s' 获取消息异常，本轮跳过", conv_title)
                                         continue
                                     else:
                                         # 返回空字符串表示已确认该对话不含 @ 命令
-                                        logger.info(f"对话 '{conv_title}' 不含 @ 命令，跳过")
+                                        logger.info("对话 '%s' 不含 @ 命令，跳过", conv_title)
 
                                     # 处理完标记为已处理，避免重复检查（使用URL ID）
                                     self.processed_conversations.add(conv_url_id)
-                                    logger.info(f"已标记对话为已处理: {conv_title} (ID: {conv_url_id})")
+                                    logger.info("已标记对话为已处理: %s (ID: {conv_url_id})", conv_title)
                         else:
                             logger.info("未检测到新对话")
 
@@ -825,7 +825,7 @@ class DeepSeekMonitor:
                     # 处理浏览器会话失效等错误
                     error_msg = str(e)
                     if "invalid session id" in error_msg or "session deleted" in error_msg or "session not created" in error_msg:
-                        logger.warning(f"浏览器会话失效，尝试重新登录... ({reconnect_count + 1}/{max_reconnect})")
+                        logger.warning("浏览器会话失效，尝试重新登录... (%s/{max_reconnect})", reconnect_count + 1)
                         reconnect_count += 1
                         if reconnect_count >= max_reconnect:
                             logger.error("重连次数过多，退出程序")
@@ -843,9 +843,9 @@ class DeepSeekMonitor:
                                 logger.info("重新登录成功")
                                 reconnect_count = 0
                         except Exception as reconnect_err:
-                            logger.error(f"重新登录失败: {reconnect_err}")
+                            logger.error("重新登录失败: %s", reconnect_err)
                     else:
-                        logger.warning(f"监控过程中出错: {e}")
+                        logger.warning("监控过程中出错: %s", e)
 
                 # 短暂等待后继续
                 
@@ -853,7 +853,7 @@ class DeepSeekMonitor:
         except KeyboardInterrupt:
             logger.info("收到中断信号，正在关闭...")
         except Exception as e:
-            logger.error(f"监控过程中发生错误: {e}")
+            logger.error("监控过程中发生错误: %s", e)
         finally:
             self.shutdown()
 
