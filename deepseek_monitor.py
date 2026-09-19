@@ -832,18 +832,24 @@ class DeepSeekMonitor:
                         if reconnect_count >= max_reconnect:
                             logger.error("重连次数过多，退出程序")
                             break
+                        # 指数退避：避免失败时快速循环重试
+                        backoff = min(30, 2 ** reconnect_count)
+                        logger.info(f"等待 {backoff} 秒后尝试重新登录...")
+                        time.sleep(backoff)
                         try:
                             if self.driver:
                                 try:
                                     self.driver.quit()
-                                except:
-                                    pass
+                                except Exception as quit_err:
+                                    logger.debug(f"driver.quit() 异常（可忽略）: {quit_err}")
                             # 清理残留进程
                             self._kill_stale_processes()
                             
                             if self.login():
                                 logger.info("重新登录成功")
                                 reconnect_count = 0
+                            else:
+                                logger.warning(f"重新登录失败，将在下次循环中重试 ({reconnect_count}/{max_reconnect})")
                         except Exception as reconnect_err:
                             logger.error(f"重新登录失败: {reconnect_err}")
                     else:
