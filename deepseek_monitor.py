@@ -390,7 +390,7 @@ class DeepSeekMonitor:
                         if any(word in line for word in exclude_words):
                             continue
                         # 排除明显的非对话内容
-                        if line.startswith('@') or line.startswith('#'):
+                        if line.startswith(('@', '#')):
                             continue
                         if 'http' in line.lower():
                             continue
