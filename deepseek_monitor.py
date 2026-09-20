@@ -167,8 +167,8 @@ class DeepSeekMonitor:
             if "deepseek" in title and "log in" not in title:
                 return True
             return False
-        except Exception:
-            return False
+        except Exception as e:
+            logging.warning(f"网络检查异常: {e}"); return False
 
     def _perform_login(self) -> bool:
         """
@@ -253,8 +253,8 @@ class DeepSeekMonitor:
                             elem.click()
                             
                             return True
-                except Exception:
-                    continue
+                except Exception as e:
+                    logging.warning(f"监控循环异常，跳过: {e}"); continue
 
             # 备用方案：查找包含"password"或"密码"的元素
             all_elements = self.driver.find_elements(By.TAG_NAME, "*")
@@ -270,8 +270,8 @@ class DeepSeekMonitor:
                                 parent.click()
                                 
                                 return True
-                    except Exception:
-                        continue
+                    except Exception as e:
+                        logging.warning(f"内层循环异常，跳过: {e}"); continue
 
             logger.warning("未找到密码登录按钮")
             return False
@@ -300,8 +300,8 @@ class DeepSeekMonitor:
                             if "log in" in text.lower() or "登录" in text:
                                 elem.click()
                                 return True
-                except Exception:
-                    continue
+                except Exception as e:
+                    logging.warning(f"监控循环异常，跳过: {e}"); continue
 
             # 备用：点击最后一个可见的按钮
             buttons = self.driver.find_elements(By.CSS_SELECTOR, "[role='button']")
@@ -354,8 +354,8 @@ class DeepSeekMonitor:
                             conversations.append((title, url_id))
                             # 更新标题映射
                             self.conversation_titles[url_id] = title
-                    except Exception:
-                        # 如果找不到标题元素，跳过
+                    except Exception as e:
+                        logging.warning(f"查找标题元素异常: {e}")
                         continue
             else:
                 # 备用方案：从页面文本中提取
@@ -708,7 +708,7 @@ class DeepSeekMonitor:
                     return True
 
             except Exception as e:
-                pass
+                logging.warning(f"关闭浏览器异常: {e}")
             time.sleep(check_interval)
 
         logger.warning(f"验证失败: 在{timeout}秒内未检测到发送成功的证据")
