@@ -92,7 +92,8 @@ class DeepSeekMonitor:
             subprocess.run(
                 "pkill -9 -f 'chrome|chromedriver' 2>/dev/null || true",
                 shell=True,
-                capture_output=True
+                capture_output=True,
+                check=False
             )
             logger.info("Chrome 进程清理完成")
         except Exception as e:
@@ -389,7 +390,7 @@ class DeepSeekMonitor:
                         if any(word in line for word in exclude_words):
                             continue
                         # 排除明显的非对话内容
-                        if line.startswith('@') or line.startswith('#'):
+                        if line.startswith(('@', '#')):
                             continue
                         if 'http' in line.lower():
                             continue
@@ -547,7 +548,8 @@ class DeepSeekMonitor:
                 ['bash', '-c', command],
                 capture_output=True,
                 text=True,
-                timeout=60  # 60秒超时
+                timeout=60,  # 60秒超时
+                check=False
             )
             return result.stdout, result.stderr, result.returncode
         except subprocess.TimeoutExpired:
@@ -830,18 +832,24 @@ class DeepSeekMonitor:
                         if reconnect_count >= max_reconnect:
                             logger.error("重连次数过多，退出程序")
                             break
+                        # 指数退避：避免失败时快速循环重试
+                        backoff = min(30, 2 ** reconnect_count)
+                        logger.info(f"等待 {backoff} 秒后尝试重新登录...")
+                        time.sleep(backoff)
                         try:
                             if self.driver:
                                 try:
                                     self.driver.quit()
-                                except:
-                                    pass
+                                except Exception as quit_err:
+                                    logger.debug(f"driver.quit() 异常（可忽略）: {quit_err}")
                             # 清理残留进程
                             self._kill_stale_processes()
                             
                             if self.login():
                                 logger.info("重新登录成功")
                                 reconnect_count = 0
+                            else:
+                                logger.warning(f"重新登录失败，将在下次循环中重试 ({reconnect_count}/{max_reconnect})")
                         except Exception as reconnect_err:
                             logger.error(f"重新登录失败: {reconnect_err}")
                     else:
