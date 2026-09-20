@@ -63,7 +63,7 @@ chromedriver --version
 # 从 https://googlechromelabs.github.io/chrome-for-testing/ 下载
 ```
 
-### 4. 运行监控
+### 5. 运行监控
 
 ```bash
 python deepseek_monitor.py
