@@ -5,3 +5,6 @@ __pycache__/
 .venv/
 browser_profile/
 deepseek_monitor.log
+
+# Ruff linter cache
+.ruff_cache/
