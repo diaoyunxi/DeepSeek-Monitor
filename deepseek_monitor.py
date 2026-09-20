@@ -834,7 +834,7 @@ class DeepSeekMonitor:
                             if self.driver:
                                 try:
                                     self.driver.quit()
-                                except:
+                                except Exception:
                                     pass
                             # 清理残留进程
                             self._kill_stale_processes()
