@@ -8,6 +8,7 @@ DeepSeek 对话监控与命令执行工具
 """
 
 import json
+import os
 import logging
 import subprocess
 from typing import Optional
@@ -84,16 +85,23 @@ class DeepSeekMonitor:
 
     def _kill_stale_processes(self):
         """
-        杀死所有残留的 Chrome 和 ChromeDriver 进程
+        杀死当前用户残留的 Chrome 和 ChromeDriver 进程。
+        仅清理当前用户拥有的进程，避免误杀其他用户或系统的 Chrome。
+        先发送 SIGTERM 优雅终止，等待 2 秒后对残留进程发送 SIGKILL。
         """
         try:
             logger.info("正在清理残留的 Chrome 进程...")
-            # 杀死所有 chrome 和 chromedriver 进程
-            subprocess.run(
-                "pkill -9 -f 'chrome|chromedriver' 2>/dev/null || true",
-                shell=True,
-                capture_output=True
-            )
+            # 仅清理当前用户拥有的 chrome/chromedriver 进程
+            # -u $USER 限制作用域，避免误杀其他用户的进程
+            for sig in ('TERM', 'KILL'):
+                subprocess.run(
+                    ['pkill', f'-{sig}', '-u', os.environ.get('USER', ''), '-f', 'chrome|chromedriver'],
+                    capture_output=True,
+                    check=False,
+                    timeout=5
+                )
+                if sig == 'TERM':
+                    time.sleep(2)  # 等待优雅退出
             logger.info("Chrome 进程清理完成")
         except Exception as e:
             logger.warning(f"清理进程时出错: {e}")
