@@ -39,6 +39,19 @@ logger = logging.getLogger(__name__)
 # DeepSeek 登录页面 URL
 LOGIN_URL = "https://chat.deepseek.com/"
 
+# ==================== 命令白名单 ====================
+# 仅允许以下安全命令执行，防止通过 DeepSeek 聊天远程执行任意命令
+ALLOWED_COMMANDS = frozenset({
+    "ls", "cat", "df", "ps", "uptime", "free", "head", "tail",
+    "grep", "wc", "date", "whoami", "id", "uname", "ifconfig",
+    "ip", "netstat", "ss", "du", "find", "echo", "pwd", "hostname",
+    "env", "printenv", "which", "whereis", "file", "stat",
+})
+
+# 禁止的 shell 元字符（管道、重定向、命令替换等），防止命令注入
+_BLOCKED_META_PATTERN = re.compile(r'[|;`$()>&<]')
+
+
 
 class DeepSeekMonitor:
     """DeepSeek 对话监控器"""
@@ -530,9 +543,49 @@ class DeepSeekMonitor:
             logger.warning(f"获取消息时出错: {e}")
             return None
 
+    def _validate_command(self, command: str) -> tuple:
+        """
+        校验命令是否允许执行（白名单 + 元字符检查）
+
+        Args:
+            command: 待校验的命令字符串
+
+        Returns:
+            (是否允许, 拒绝原因)
+        """
+        if not command or not command.strip():
+            return False, "命令为空"
+
+        cmd_stripped = command.strip()
+
+        # 检查命令长度
+        if len(cmd_stripped) > 4096:
+            return False, f"命令过长（{len(cmd_stripped)} 字符），最大允许 4096 字符"
+
+        # 检查危险字符
+        if _BLOCKED_META_PATTERN.search(cmd_stripped):
+            return False, "命令包含危险的特殊字符（管道/重定向/命令替换等），拒绝执行"
+
+        # 解析命令首 token
+        import shlex
+        try:
+            parts = shlex.split(cmd_stripped)
+        except ValueError as e:
+            return False, f"命令解析失败: {e}"
+
+        if not parts:
+            return False, "命令为空"
+
+        # 检查是否在白名单中
+        cmd_name = os.path.basename(parts[0])
+        if cmd_name not in ALLOWED_COMMANDS:
+            return False, f"命令 '{cmd_name}' 不在安全白名单中，拒绝执行"
+
+        return True, ""
+
     def _execute_bash_command(self, command: str) -> tuple:
         """
-        执行 bash 命令
+        安全执行 bash 命令（带白名单校验）
 
         Args:
             command: 要执行的命令
@@ -540,19 +593,30 @@ class DeepSeekMonitor:
         Returns:
             (stdout, stderr, returncode) 元组
         """
+        # 安全校验
+        allowed, reason = self._validate_command(command)
+        if not allowed:
+            logger.warning(f"命令被拦截: {command}, 原因: {reason}")
+            return "", f"[命令被拒绝] {reason}", -1
+
         logger.info(f"执行命令: {command}")
         try:
-            # 使用 bash -c 执行，确保参数正确传递
+            import shlex
+            args = shlex.split(command)
             result = subprocess.run(
-                ['bash', '-c', command],
+                args,
+                shell=False,
                 capture_output=True,
                 text=True,
-                timeout=60  # 60秒超时
+                timeout=60
             )
             return result.stdout, result.stderr, result.returncode
         except subprocess.TimeoutExpired:
             logger.error(f"命令执行超时: {command}")
             return "", "命令执行超时", 1
+        except FileNotFoundError:
+            logger.error(f"命令不存在: {command}")
+            return "", "命令不存在", 1
         except Exception as e:
             logger.error(f"命令执行出错: {e}")
             return "", str(e), 1
