@@ -7,6 +7,7 @@ DeepSeek 对话监控与命令执行工具
 当发现新对话且消息以 @ 开头时，执行对应 bash 命令并回复结果。
 """
 
+import argparse
 import json
 import logging
 import subprocess
@@ -26,14 +27,23 @@ from selenium.common.exceptions import (
 )
 
 # 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler("deepseek_monitor.log", encoding="utf-8"),
-    ],
-)
+def setup_logging(level_name: str = "INFO"):
+    """配置日志系统，支持通过参数设置日志级别。
+
+    Args:
+        level_name: 日志级别名称，支持 DEBUG/INFO/WARNING/ERROR/CRITICAL
+    """
+    level = getattr(logging, level_name.upper(), logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler("deepseek_monitor.log", encoding="utf-8"),
+        ],
+    )
+
+
 logger = logging.getLogger(__name__)
 
 # DeepSeek 登录页面 URL
@@ -866,5 +876,14 @@ class DeepSeekMonitor:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="DeepSeek 对话监控工具")
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="日志级别 (默认: INFO)",
+    )
+    args = parser.parse_args()
+    setup_logging(args.log_level)
     monitor = DeepSeekMonitor()
     monitor.run()
