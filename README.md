@@ -9,7 +9,7 @@
 - 🤖 自动检测以 `@` 开头的命令并执行
 - 📝 将命令执行结果自动回复到对话中
 - 🖥️ 支持无头模式运行，适合服务器部署
-- 📊 详细的 DEBUG 级别日志记录
+- 📊 可配置的日志级别（默认 INFO，支持 --log-level DEBUG）
 
 ## 环境要求
 
@@ -66,7 +66,11 @@ chromedriver --version
 ### 4. 运行监控
 
 ```bash
+# 默认 INFO 日志级别
 python deepseek_monitor.py
+
+# 使用 DEBUG 日志级别获取详细输出
+python deepseek_monitor.py --log-level DEBUG
 ```
 
 ## 使用说明
