@@ -41,6 +41,18 @@ logger = logging.getLogger(__name__)
 LOGIN_URL = "https://chat.deepseek.com/"
 
 
+# ==================== 命令安全白名单 ====================
+ALLOWED_COMMANDS = frozenset({
+    "ls", "cat", "df", "ps", "uptime", "free", "head", "tail",
+    "grep", "wc", "date", "whoami", "id", "uname", "echo",
+    "pwd", "hostname", "env", "which", "find",
+})
+
+# 禁止的 shell 元字符
+import re as _re
+_DANGEROUS_CHARS = _re.compile(r'[|;`$()>&<\n\r]')
+
+
 class DeepSeekMonitor:
     """DeepSeek 对话监控器"""
 
@@ -533,7 +545,7 @@ class DeepSeekMonitor:
 
     def _execute_bash_command(self, command: str) -> tuple:
         """
-        执行 bash 命令
+        安全执行命令（白名单 + 输入校验）
 
         Args:
             command: 要执行的命令
@@ -541,19 +553,50 @@ class DeepSeekMonitor:
         Returns:
             (stdout, stderr, returncode) 元组
         """
+        import shlex
+
+        # 安全检查：空命令
+        if not command or not command.strip():
+            return "", "命令为空", 1
+
+        # 安全检查：危险字符（管道、重定向、命令替换等）
+        if _DANGEROUS_CHARS.search(command):
+            logger.warning(f"命令被拦截（含危险字符）: {command}")
+            return "", "[命令被拒绝] 包含危险的 shell 元字符", 1
+
+        # 安全检查：命令长度限制
+        if len(command) > 1024:
+            return "", "[命令被拒绝] 命令过长", 1
+
+        # 安全检查：白名单校验
+        try:
+            parts = shlex.split(command)
+        except ValueError as e:
+            return "", f"[命令被拒绝] 解析失败: {e}", 1
+
+        if not parts:
+            return "", "命令为空", 1
+
+        cmd_name = parts[0].split("/")[-1]  # 取 basename
+        if cmd_name not in ALLOWED_COMMANDS:
+            logger.warning(f"命令被拦截（不在白名单）: {command}")
+            return "", f"[命令被拒绝] '{cmd_name}' 不在安全白名单中", 1
+
         logger.info(f"执行命令: {command}")
         try:
-            # 使用 bash -c 执行，确保参数正确传递
             result = subprocess.run(
-                ['bash', '-c', command],
+                parts,
                 capture_output=True,
                 text=True,
-                timeout=60  # 60秒超时
+                timeout=60,
+                shell=False,
             )
             return result.stdout, result.stderr, result.returncode
         except subprocess.TimeoutExpired:
             logger.error(f"命令执行超时: {command}")
             return "", "命令执行超时", 1
+        except FileNotFoundError:
+            return "", f"命令不存在: {parts[0]}", 1
         except Exception as e:
             logger.error(f"命令执行出错: {e}")
             return "", str(e), 1
