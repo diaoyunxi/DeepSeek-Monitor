@@ -9,6 +9,7 @@ DeepSeek 对话监控与命令执行工具
 
 import json
 import logging
+import shutil
 import subprocess
 from typing import Optional
 
@@ -57,7 +58,7 @@ class DeepSeekMonitor:
         self.is_first_run: bool = True  # 是否首次运行
         self.conversation_titles: dict = {}  # url_id -> title 的映射
         self.profile_dir = self.config.get("profile_dir", "./browser_profile")
-        self.chrome_driver_path = "/usr/local/bin/chromedriver"
+        self.chrome_driver_path = shutil.which("chromedriver") or "chromedriver"
 
     def _load_config(self, config_path: str) -> dict:
         """加载配置文件"""
@@ -118,8 +119,13 @@ class DeepSeekMonitor:
         if self.profile_dir:
             chrome_options.add_argument(f"--user-data-dir={self.profile_dir}")
 
-        # 创建 WebDriver 实例，使用已安装的 ChromeDriver
-        service = Service(executable_path=self.chrome_driver_path)
+        # 创建 WebDriver 实例
+        # 如果 chromedriver 在 PATH 中找到，使用它；否则让 Selenium Manager 自动处理
+        found_path = shutil.which("chromedriver")
+        if found_path:
+            service = Service(executable_path=found_path)
+        else:
+            service = Service()  # 让 Selenium Manager 自动下载/查找
         driver = webdriver.Chrome(service=service, options=chrome_options)
         driver.set_page_load_timeout(30)
         driver.implicitly_wait(10)
