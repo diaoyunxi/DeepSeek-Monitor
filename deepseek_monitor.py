@@ -8,6 +8,7 @@ DeepSeek 对话监控与命令执行工具
 """
 
 import json
+import time
 import logging
 import subprocess
 from typing import Optional
@@ -847,7 +848,8 @@ class DeepSeekMonitor:
                     else:
                         logger.warning(f"监控过程中出错: {e}")
 
-                # 短暂等待后继续
+                # 轮询间隔等待，避免频繁刷新页面
+                time.sleep(self.poll_interval)
                 
 
         except KeyboardInterrupt:
