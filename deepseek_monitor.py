@@ -707,7 +707,7 @@ class DeepSeekMonitor:
                     logger.info("验证通过: 消息已发送成功")
                     return True
 
-            except Exception as e:
+            except Exception:  # noqa: BLE001
                 pass
             time.sleep(check_interval)
 
