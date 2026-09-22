@@ -819,6 +819,13 @@ class DeepSeekMonitor:
                     # 更新上一秒的对话列表（存储URL ID）
                     current_url_ids = set(url_id for _, url_id in current_conversations)
                     self.last_conversations = current_url_ids
+
+                    # 清理不在当前对话列表中的旧缓存，防止长期运行时内存泄漏
+                    self.conversation_titles = {
+                        k: v for k, v in self.conversation_titles.items()
+                        if k in current_url_ids
+                    }
+                    self.processed_conversations &= current_url_ids
                     reconnect_count = 0  # 重置重连计数
 
                 except Exception as e:
