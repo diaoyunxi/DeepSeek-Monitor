@@ -141,7 +141,7 @@ class DeepSeekMonitor:
             self.driver.get(LOGIN_URL)
 
             # 等待页面加载
-            
+
 
             # 检查是否已经登录
             if self._is_logged_in():
@@ -219,7 +219,7 @@ class DeepSeekMonitor:
             )
 
             # 额外等待页面加载
-            
+
 
             logger.info("登录成功！")
             return True
@@ -251,7 +251,7 @@ class DeepSeekMonitor:
                     for elem in elements:
                         if elem.is_displayed():
                             elem.click()
-                            
+
                             return True
                 except Exception:
                     continue
@@ -268,7 +268,7 @@ class DeepSeekMonitor:
                             parent = parent.parent
                             if parent and parent.is_displayed():
                                 parent.click()
-                                
+
                                 return True
                     except Exception:
                         continue
@@ -417,7 +417,7 @@ class DeepSeekMonitor:
         """
         try:
             # 等待页面稳定
-            
+
 
             # 查找所有可点击元素
             clickables = self.driver.find_elements(By.CSS_SELECTOR, '[role="button"], button, a, [class*="item"], li')
@@ -429,7 +429,7 @@ class DeepSeekMonitor:
                         elem.click()
                         logger.info(f"已点击对话: {title}")
                         # 等待页面加载
-                        
+
                         return True
                 except (NoSuchElementException, StaleElementReferenceException):
                     continue
@@ -838,7 +838,7 @@ class DeepSeekMonitor:
                                     pass
                             # 清理残留进程
                             self._kill_stale_processes()
-                            
+
                             if self.login():
                                 logger.info("重新登录成功")
                                 reconnect_count = 0
@@ -848,7 +848,7 @@ class DeepSeekMonitor:
                         logger.warning(f"监控过程中出错: {e}")
 
                 # 短暂等待后继续
-                
+
 
         except KeyboardInterrupt:
             logger.info("收到中断信号，正在关闭...")
