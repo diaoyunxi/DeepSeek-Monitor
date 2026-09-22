@@ -346,9 +346,11 @@ class DeepSeekMonitor:
                         href = link.get_attribute('href')
                         url_id = href.split('/')[-1] if href else ''
 
-                        # 如果 url_id 提取失败，使用标题作为备用 ID
+                        # 如果 url_id 提取失败，生成唯一 ID 而非使用标题（防止同名对话碰撞）
                         if not url_id:
-                            url_id = title
+                            import hashlib
+                            url_id = f"title_{hashlib.md5((title + str(len(conversations))).encode()).hexdigest()[:12]}"
+                            logger.debug(f"URL ID 提取失败，生成备用 ID: {url_id} (标题: {title})")
 
                         if title and len(title) > 0:
                             conversations.append((title, url_id))
@@ -397,7 +399,10 @@ class DeepSeekMonitor:
                         if year_pattern.match(line):
                             continue
 
-                        conversations.append((line, line))  # 备用方案使用标题作为ID
+                        # 备用方案：生成唯一 ID 防止同名碰撞
+                        import hashlib
+                        fallback_id = f"body_{hashlib.md5((line + str(len(conversations))).encode()).hexdigest()[:12]}"
+                        conversations.append((line, fallback_id))
 
             return conversations
 
