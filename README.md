@@ -39,7 +39,9 @@ pip install -r requirements.txt
 
 ### 3. 配置账号密码
 
-编辑 `config.json` 文件，填入你的 DeepSeek 手机号和验证码：
+编辑 `config.json` 文件，选择一种登录方式并填写对应信息：
+
+**方式一：验证码登录（默认）**
 
 ```json
 {
@@ -48,6 +50,25 @@ pip install -r requirements.txt
     "profile_dir": "./browser_profile"
 }
 ```
+
+**方式二：密码登录**
+
+```json
+{
+    "phone": "你的DeepSeek手机号",
+    "password": "你的密码",
+    "login_type": "password",
+    "profile_dir": "./browser_profile"
+}
+```
+
+| 字段 | 说明 | 默认值 |
+|------|------|--------|
+| `phone` | DeepSeek 注册手机号 | **必填** |
+| `code` | 验证码（验证码登录时必填） | - |
+| `password` | 密码（密码登录时必填） | - |
+| `login_type` | 登录方式：`"code"` 或 `"password"` | `"code"` |
+| `profile_dir` | 浏览器 Profile 持久化目录 | `"./browser_profile"` |
 
 **重要**：`config.json` 已在 `.gitignore` 中排除，请勿提交到版本库。
 
