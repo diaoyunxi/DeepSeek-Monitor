@@ -164,9 +164,7 @@ class DeepSeekMonitor:
                 return False
             # 尝试获取页面标题或内容判断
             title = self.driver.title.lower()
-            if "deepseek" in title and "log in" not in title:
-                return True
-            return False
+            return "deepseek" in title and "log in" not in title
         except Exception:
             return False
 
