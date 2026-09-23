@@ -857,7 +857,7 @@ class DeepSeekMonitor:
         finally:
             self.shutdown()
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         """关闭浏览器并清理资源"""
         if self.driver:
             logger.info("正在关闭浏览器...")
