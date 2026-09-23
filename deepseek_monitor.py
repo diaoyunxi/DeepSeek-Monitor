@@ -581,26 +581,22 @@ class DeepSeekMonitor:
             )
             logger.info("找到输入框: textarea[name='search']")
 
-            # 使用send_keys设置文本，确保Vue响应式系统正确更新按钮状态
-            # 重要：不能使用JS直接设置textarea.value，否则按钮会保持disabled状态
-            # 重要：不能一次性send_keys包含换行符(\n)的多行文本，
-            # 因为\n会被页面当作Enter键处理，导致第一行被立即单独发送成一条消息，
-            # 后续内容丢失换行挤成另一条。正确做法：逐行输入，行与行之间
-            # 用 Shift+Enter 组合键插入换行（不触发发送），最后统一按Enter发送，
-            # 保证多行命令结果只产生一条带换行的回复。
+            # 使用 JavaScript 设置 textarea 值，避免 send_keys 逐字符输入时
+            # Vue.js 响应式系统在高输入速率下丢失字符的问题。
+            # 通过 JS 设置 value 后触发 input + change 事件，确保 Vue 双向绑定正确更新。
+            # 注意：必须使用 Object.getOwnPropertyDescriptor 获取原生 setter，
+            # 否则 Vue 的自定义 setter 可能拦截不到值变更。
             response_text = response_text.replace('\r\n', '\n').replace('\r', '\n')
-            lines = response_text.split('\n')
-            for i, line in enumerate(lines):
-                if line:
-                    input_box.send_keys(line)
-                # 除最后一行外，每行末尾插入换行（Shift+Enter，不触发发送）
-                if i < len(lines) - 1:
-                    ActionChains(self.driver) \
-                        .key_down(Keys.SHIFT) \
-                        .send_keys(Keys.ENTER) \
-                        .key_up(Keys.SHIFT) \
-                        .perform()
-            logger.info(f"文本已设置（共 {len(lines)} 行）: {repr(response_text[:30])}...")
+            self.driver.execute_script("""
+                const textarea = arguments[0];
+                const text = arguments[1];
+                const nativeSetter = Object.getOwnPropertyDescriptor(
+                    window.HTMLTextAreaElement.prototype, 'value').set;
+                nativeSetter.call(textarea, text);
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                textarea.dispatchEvent(new Event('change', { bubbles: true }));
+            """, input_box, response_text)
+            logger.info(f"文本已通过 JavaScript 设置（{len(response_text)} 字符）: {repr(response_text[:30])}...")
 
             time.sleep(0.5)
 
