@@ -679,7 +679,6 @@ class DeepSeekMonitor:
         Returns:
             验证是否成功
         """
-        import time
         start_time = time.time()
         check_interval = 0.3
 
