@@ -530,9 +530,21 @@ class DeepSeekMonitor:
             logger.warning(f"获取消息时出错: {e}")
             return None
 
+    # 禁止执行的危险命令/模式
+    _BLOCKED_PATTERNS = [
+        "rm -rf", "rm -fr", "mkfs", "dd if=", ":(){", "fork bomb",
+        "> /dev/sda", "chmod -R 777 /", "shutdown", "reboot", "halt",
+        "poweroff", "init 0", "init 6", "wget | bash", "curl | bash",
+        "wget | sh", "curl | sh", "nc -", "ncat -", "/dev/tcp",
+        "chmod 777 /", "sudo", "su ", "passwd", "useradd", "userdel",
+    ]
+
+    # 输出最大长度限制（字符数）
+    _MAX_OUTPUT_LENGTH = 50000
+
     def _execute_bash_command(self, command: str) -> tuple:
         """
-        执行 bash 命令
+        执行 bash 命令（带安全过滤）
 
         Args:
             command: 要执行的命令
@@ -540,6 +552,18 @@ class DeepSeekMonitor:
         Returns:
             (stdout, stderr, returncode) 元组
         """
+        # 安全检查：拦截危险命令模式
+        cmd_lower = command.lower().strip()
+        for pattern in self._BLOCKED_PATTERNS:
+            if pattern in cmd_lower:
+                msg = f"命令被安全策略拦截: 包含危险模式 '{pattern}'"
+                logger.warning(msg)
+                return "", msg, 1
+
+        # 限制命令长度，防止超长命令
+        if len(command) > 1000:
+            return "", "命令过长，最大允许 1000 字符", 1
+
         logger.info(f"执行命令: {command}")
         try:
             # 使用 bash -c 执行，确保参数正确传递
@@ -547,13 +571,19 @@ class DeepSeekMonitor:
                 ['bash', '-c', command],
                 capture_output=True,
                 text=True,
-                timeout=60  # 60秒超时
+                timeout=60,  # 60秒超时
+                env={"PATH": "/usr/local/bin:/usr/bin:/bin"}  # 限制 PATH
             )
-            return result.stdout, result.stderr, result.returncode
+            # 截断过长输出
+            stdout = result.stdout[:self._MAX_OUTPUT_LENGTH]
+            stderr = result.stderr[:self._MAX_OUTPUT_LENGTH]
+            if len(result.stdout) > self._MAX_OUTPUT_LENGTH:
+                stdout += "\n... [输出已截断]"
+            return stdout, stderr, result.returncode
         except subprocess.TimeoutExpired:
             logger.error(f"命令执行超时: {command}")
             return "", "命令执行超时", 1
-        except Exception as e:
+        except OSError as e:
             logger.error(f"命令执行出错: {e}")
             return "", str(e), 1
 
