@@ -9,6 +9,8 @@ DeepSeek 对话监控与命令执行工具
 
 import json
 import logging
+import os
+import signal
 import subprocess
 from typing import Optional
 
@@ -84,17 +86,51 @@ class DeepSeekMonitor:
 
     def _kill_stale_processes(self):
         """
-        杀死所有残留的 Chrome 和 ChromeDriver 进程
+        清理本进程启动的 Chrome 和 ChromeDriver 进程
+        
+        使用 ps 查找与当前 profile_dir 相关的 Chrome 进程，
+        避免误杀用户自己的浏览器或其他自动化任务。
         """
         try:
-            logger.info("正在清理残留的 Chrome 进程...")
-            # 杀死所有 chrome 和 chromedriver 进程
-            subprocess.run(
-                "pkill -9 -f 'chrome|chromedriver' 2>/dev/null || true",
-                shell=True,
-                capture_output=True
+            # 只清理与当前 profile_dir 相关的 Chrome 进程
+            profile_dir = self.profile_dir
+            if not profile_dir or not os.path.exists(profile_dir):
+                logger.debug("profile_dir 不存在，跳过进程清理")
+                return
+            
+            # 查找包含当前 profile_dir 的 Chrome 进程
+            result = subprocess.run(
+                ["ps", "aux"],
+                capture_output=True,
+                text=True,
+                timeout=5
             )
-            logger.info("Chrome 进程清理完成")
+            
+            if result.returncode != 0:
+                logger.warning("无法获取进程列表")
+                return
+            
+            killed_count = 0
+            for line in result.stdout.splitlines():
+                # 匹配包含 profile_dir 的 chrome/chromedriver 进程
+                if profile_dir in line and ('chrome' in line.lower() or 'chromedriver' in line.lower()):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        try:
+                            pid = int(parts[1])
+                            # 不杀自己
+                            if pid != os.getpid():
+                                os.kill(pid, signal.SIGTERM)
+                                killed_count += 1
+                                logger.debug(f"已发送 SIGTERM 到 PID {pid}")
+                        except (ValueError, ProcessLookupError, PermissionError):
+                            continue
+            
+            if killed_count > 0:
+                logger.info(f"已清理 {killed_count} 个相关进程")
+            else:
+                logger.debug("未发现需要清理的相关进程")
+                
         except Exception as e:
             logger.warning(f"清理进程时出错: {e}")
 
