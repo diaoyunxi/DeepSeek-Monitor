@@ -64,15 +64,25 @@ class DeepSeekMonitor:
         try:
             with open(config_path, "r", encoding="utf-8") as f:
                 config = json.load(f)
-            # 验证必需字段：至少需要 phone
+            # 验证必需字段：至少需要 phone，且必须为非空字符串
             if "phone" not in config:
                 raise ValueError("配置文件中缺少 phone 字段")
-            # 密码登录需要 password，验证码登录需要 code
+            phone = config["phone"]
+            if not isinstance(phone, str) or not phone.strip():
+                raise ValueError("phone 字段必须为非空字符串")
+            # 校验 login_type 合法值
             login_type = config.get("login_type", "code")
-            if login_type == "password" and "password" not in config:
-                raise ValueError("密码登录模式需要 password 字段")
-            elif login_type == "code" and "code" not in config:
-                raise ValueError("验证码登录模式需要 code 字段")
+            if login_type not in ("code", "password"):
+                raise ValueError(f"login_type 必须为 'code' 或 'password'，当前值: {login_type}")
+            # 密码登录需要 password，验证码登录需要 code
+            if login_type == "password":
+                pwd = config.get("password")
+                if not pwd or not isinstance(pwd, str) or not pwd.strip():
+                    raise ValueError("密码登录模式需要非空的 password 字段")
+            elif login_type == "code":
+                code = config.get("code")
+                if not code or not isinstance(code, str) or not code.strip():
+                    raise ValueError("验证码登录模式需要非空的 code 字段")
             logger.info(f"成功加载配置文件: {config_path}")
             return config
         except FileNotFoundError:
