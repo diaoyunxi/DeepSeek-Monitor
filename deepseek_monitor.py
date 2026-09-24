@@ -355,7 +355,7 @@ class DeepSeekMonitor:
                             # 更新标题映射
                             self.conversation_titles[url_id] = title
                     except Exception:
-                        # 如果找不到标题元素，跳过
+                        pass  # TODO: add proper error handling
                         continue
             else:
                 # 备用方案：从页面文本中提取
@@ -708,7 +708,7 @@ class DeepSeekMonitor:
                     return True
 
             except Exception as e:
-                pass
+                pass  # TODO: add proper error handling
             time.sleep(check_interval)
 
         logger.warning(f"验证失败: 在{timeout}秒内未检测到发送成功的证据")
@@ -822,7 +822,7 @@ class DeepSeekMonitor:
                     reconnect_count = 0  # 重置重连计数
 
                 except Exception as e:
-                    # 处理浏览器会话失效等错误
+                    pass  # TODO: add proper error handling
                     error_msg = str(e)
                     if "invalid session id" in error_msg or "session deleted" in error_msg or "session not created" in error_msg:
                         logger.warning(f"浏览器会话失效，尝试重新登录... ({reconnect_count + 1}/{max_reconnect})")
@@ -835,7 +835,7 @@ class DeepSeekMonitor:
                                 try:
                                     self.driver.quit()
                                 except:
-                                    pass
+                                    pass  # TODO: add proper error handling
                             # 清理残留进程
                             self._kill_stale_processes()
                             
