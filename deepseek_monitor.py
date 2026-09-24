@@ -530,9 +530,38 @@ class DeepSeekMonitor:
             logger.warning(f"获取消息时出错: {e}")
             return None
 
+    # 危险命令模式黑名单，匹配到任一模式即拒绝执行
+    _DANGEROUS_PATTERNS = [
+        r'\brm\b', r'\bmkfs\b', r'\bdd\b', r'\b:(){',  # 破坏性命令
+        r'\bshutdown\b', r'\breboot\b', r'\binit\b',   # 系统控制
+        r'\bcurl\b.*\|.*\bsh\b', r'\bwget\b.*\|.*\bsh\b',  # 远程执行
+        r'\bchmod\s+777\b', r'\bchown\b',               # 权限篡改
+        r'\bnc\b', r'\bncat\b', r'\bnetcat\b',          # 反弹 shell
+        r'\bnohup\b',                                    # 后台持久化
+        r'[|;`$]',                                        # shell 元字符（管道/替换/变量）
+    ]
+
+    def _is_command_safe(self, command: str) -> tuple:
+        """
+        检查命令是否安全（不在黑名单中）
+
+        Args:
+            command: 待检查的命令字符串
+
+        Returns:
+            (是否安全, 拒绝原因)
+        """
+        import re
+        if not command or not command.strip():
+            return False, "命令为空"
+        for pattern in self._DANGEROUS_PATTERNS:
+            if re.search(pattern, command, re.IGNORECASE):
+                return False, f"命令匹配危险模式 '{pattern}'，拒绝执行"
+        return True, ""
+
     def _execute_bash_command(self, command: str) -> tuple:
         """
-        执行 bash 命令
+        安全执行 bash 命令（含黑名单过滤）
 
         Args:
             command: 要执行的命令
@@ -540,6 +569,12 @@ class DeepSeekMonitor:
         Returns:
             (stdout, stderr, returncode) 元组
         """
+        # 安全检查：拒绝危险命令
+        safe, reason = self._is_command_safe(command)
+        if not safe:
+            logger.warning(f"命令被拒绝: {command}, 原因: {reason}")
+            return "", f"[命令被拒绝] {reason}", 1
+
         logger.info(f"执行命令: {command}")
         try:
             # 使用 bash -c 执行，确保参数正确传递
