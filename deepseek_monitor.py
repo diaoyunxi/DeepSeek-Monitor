@@ -731,6 +731,7 @@ class DeepSeekMonitor:
         max_reconnect = 5
 
         try:
+            _max_iter = 1000000  # Safety limit
             while True:
                 try:
                     # 刷新页面获取最新对话列表
