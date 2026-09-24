@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 DeepSeek 对话监控与命令执行工具
 ================================
@@ -13,17 +12,17 @@ import subprocess
 from typing import Optional
 
 from selenium import webdriver
+from selenium.common.exceptions import (
+    NoSuchElementException,
+    StaleElementReferenceException,
+    TimeoutException,
+)
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import (
-    TimeoutException,
-    NoSuchElementException,
-    StaleElementReferenceException,
-)
+from selenium.webdriver.support.ui import WebDriverWait
 
 # 配置日志
 logging.basicConfig(
@@ -253,7 +252,8 @@ class DeepSeekMonitor:
                             elem.click()
                             
                             return True
-                except Exception:
+                except Exception as e:
+                    logger.debug("操作异常 (行 256): %s", e)
                     continue
 
             # 备用方案：查找包含"password"或"密码"的元素
@@ -270,7 +270,8 @@ class DeepSeekMonitor:
                                 parent.click()
                                 
                                 return True
-                    except Exception:
+                    except Exception as e:
+                        logger.debug("操作异常 (行 273): %s", e)
                         continue
 
             logger.warning("未找到密码登录按钮")
@@ -300,7 +301,8 @@ class DeepSeekMonitor:
                             if "log in" in text.lower() or "登录" in text:
                                 elem.click()
                                 return True
-                except Exception:
+                except Exception as e:
+                    logger.debug("操作异常 (行 303): %s", e)
                     continue
 
             # 备用：点击最后一个可见的按钮
@@ -569,6 +571,7 @@ class DeepSeekMonitor:
         """
         try:
             import time
+
             from selenium.webdriver.common.action_chains import ActionChains
 
             # 记录发送前的URL，用于检测页面跳转
