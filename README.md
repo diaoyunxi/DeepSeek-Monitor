@@ -45,9 +45,14 @@ pip install -r requirements.txt
 {
     "phone": "你的DeepSeek手机号",
     "code": "验证码",
-    "profile_dir": "./browser_profile"
+    "profile_dir": "./browser_profile",
+    "chrome_driver_path": "/usr/local/bin/chromedriver"
 }
 ```
+
+**说明**：
+- `chrome_driver_path` 为可选项，不配置时会自动在系统 PATH 中查找 chromedriver
+- 如果 chromedriver 不在 PATH 中，需要手动指定完整路径
 
 **重要**：`config.json` 已在 `.gitignore` 中排除，请勿提交到版本库。
 
