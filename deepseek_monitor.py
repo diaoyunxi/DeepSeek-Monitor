@@ -9,6 +9,7 @@ DeepSeek 对话监控与命令执行工具
 
 import json
 import logging
+import shutil
 import subprocess
 from typing import Optional
 
@@ -57,7 +58,11 @@ class DeepSeekMonitor:
         self.is_first_run: bool = True  # 是否首次运行
         self.conversation_titles: dict = {}  # url_id -> title 的映射
         self.profile_dir = self.config.get("profile_dir", "./browser_profile")
-        self.chrome_driver_path = "/usr/local/bin/chromedriver"
+        # chromedriver 路径：优先使用配置，其次 PATH 查找，最后使用默认路径
+        self.chrome_driver_path = self.config.get(
+            "chrome_driver_path",
+            shutil.which("chromedriver") or "/usr/local/bin/chromedriver"
+        )
 
     def _load_config(self, config_path: str) -> dict:
         """加载配置文件"""
