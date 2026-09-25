@@ -83,20 +83,18 @@ class DeepSeekMonitor:
             raise
 
     def _kill_stale_processes(self):
-        """
-        杀死所有残留的 Chrome 和 ChromeDriver 进程
-        """
+        """Kill all stale Chrome and ChromeDriver processes."""
         try:
-            logger.info("正在清理残留的 Chrome 进程...")
-            # 杀死所有 chrome 和 chromedriver 进程
-            subprocess.run(
-                "pkill -9 -f 'chrome|chromedriver' 2>/dev/null || true",
-                shell=True,
-                capture_output=True
-            )
-            logger.info("Chrome 进程清理完成")
-        except Exception as e:
-            logger.warning(f"清理进程时出错: {e}")
+            logger.info("Cleaning stale Chrome processes...")
+            for pattern in ("chrome", "chromedriver"):
+                subprocess.run(
+                    ["pkill", "-9", "-f", pattern],
+                    capture_output=True,
+                    check=False,
+                )
+            logger.info("Chrome process cleanup complete")
+        except (OSError, subprocess.SubprocessError) as e:
+            logger.warning("Process cleanup failed: %s", e)
 
     def _setup_driver(self) -> webdriver.Chrome:
         """
