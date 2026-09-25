@@ -58,6 +58,8 @@ class DeepSeekMonitor:
         self.conversation_titles: dict = {}  # url_id -> title 的映射
         self.profile_dir = self.config.get("profile_dir", "./browser_profile")
         self.chrome_driver_path = "/usr/local/bin/chromedriver"
+        # CSS 选择器可通过配置文件覆盖，避免 DeepSeek UI 更新后硬编码失效
+        self.title_css_selector = self.config.get("title_css_selector", "div.c08e6e93")
 
     def _load_config(self, config_path: str) -> dict:
         """加载配置文件"""
@@ -340,7 +342,7 @@ class DeepSeekMonitor:
                 for link in conversation_links:
                     try:
                         # 获取对话标题（在 class="c08e6e93" 的 div 中）
-                        title_elem = link.find_element(By.CSS_SELECTOR, "div.c08e6e93")
+                        title_elem = link.find_element(By.CSS_SELECTOR, self.title_css_selector)
                         title = title_elem.text.strip()
                         # 提取URL中的对话ID
                         href = link.get_attribute('href')
