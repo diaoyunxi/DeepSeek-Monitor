@@ -530,9 +530,20 @@ class DeepSeekMonitor:
             logger.warning(f"获取消息时出错: {e}")
             return None
 
+    # 命令白名单：仅允许以下安全命令执行
+    ALLOWED_COMMANDS = frozenset({
+        "ls", "cat", "df", "ps", "uptime", "free", "head", "tail",
+        "grep", "wc", "date", "whoami", "id", "uname", "ifconfig",
+        "ip", "netstat", "ss", "du", "find", "echo", "hostname",
+        "env", "printenv", "pwd", "which", "file", "stat",
+    })
+
+    # 禁止的 shell 元字符，防止命令注入
+    _SHELL_META = re.compile(r'[|;`$()>&<]')
+
     def _execute_bash_command(self, command: str) -> tuple:
         """
-        执行 bash 命令
+        执行命令（白名单模式 + shell=False）
 
         Args:
             command: 要执行的命令
@@ -541,13 +552,43 @@ class DeepSeekMonitor:
             (stdout, stderr, returncode) 元组
         """
         logger.info(f"执行命令: {command}")
+
+        # 1. 空命令检查
+        cmd_stripped = command.strip()
+        if not cmd_stripped:
+            return "", "命令为空", 1
+
+        # 2. 命令长度限制
+        if len(cmd_stripped) > 1024:
+            return "", "命令过长，拒绝执行", 1
+
+        # 3. 禁止 shell 元字符（管道/重定向/命令替换）
+        if self._SHELL_META.search(cmd_stripped):
+            logger.warning(f"命令包含危险元字符，拒绝执行: {cmd_stripped}")
+            return "", "命令包含危险字符（管道/重定向等），拒绝执行", 1
+
+        # 4. 白名单检查
+        import shlex
         try:
-            # 使用 bash -c 执行，确保参数正确传递
+            parts = shlex.split(cmd_stripped)
+        except ValueError as e:
+            return "", f"命令解析失败: {e}", 1
+
+        if not parts:
+            return "", "命令为空", 1
+
+        base_cmd = os.path.basename(parts[0])
+        if base_cmd not in self.ALLOWED_COMMANDS:
+            logger.warning(f"命令 '{base_cmd}' 不在白名单中，拒绝执行")
+            return "", f"命令 '{base_cmd}' 不在允许列表中", 1
+
+        # 5. 使用 shell=False 执行
+        try:
             result = subprocess.run(
-                ['bash', '-c', command],
+                parts,
                 capture_output=True,
                 text=True,
-                timeout=60  # 60秒超时
+                timeout=60
             )
             return result.stdout, result.stderr, result.returncode
         except subprocess.TimeoutExpired:
