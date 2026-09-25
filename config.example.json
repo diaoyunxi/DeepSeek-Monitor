@@ -1,0 +1,22 @@
+# ============================================================
+# DeepSeek-Monitor 配置模板
+# 复制此文件为 config.json 并填入实际值：cp config.example.json config.json
+# ============================================================
+
+{
+  "profile_dir": "./browser_profile",
+  "headless": false,
+  "login_type": "code",
+  "username": "",
+  "password": "",
+  "code": "",
+  "check_interval": 30,
+  "timeout": 60,
+  "max_retries": 3,
+  "chrome_driver_path": "",
+  "log_level": "INFO",
+  "notification": {
+    "enabled": false,
+    "webhook_url": ""
+  }
+}
