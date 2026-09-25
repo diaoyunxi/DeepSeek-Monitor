@@ -1,0 +1,7 @@
+{
+    "phone": "你的手机号",
+    "login_type": "code",
+    "code": "验证码登录时填写，密码登录时可留空",
+    "password": "密码登录时填写，验证码登录时可留空",
+    "profile_dir": "./browser_profile"
+}
