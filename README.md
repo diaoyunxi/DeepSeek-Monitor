@@ -37,6 +37,16 @@ pip install -r requirements.txt
 # 访问 https://chromedriver.chromium.org/ 下载对应版本
 ```
 
+程序默认使用 `/usr/local/bin/chromedriver`，可通过 `config.json` 的 `chromedriver_path` 字段自定义路径：
+
+```bash
+# 检查 ChromeDriver 版本
+chromedriver --version
+
+# 如需重新安装（Chrome 151 对应 ChromeDriver 151）
+# 从 https://googlechromelabs.github.io/chrome-for-testing/ 下载
+```
+
 ### 3. 配置账号密码
 
 编辑 `config.json` 文件，填入你的 DeepSeek 手机号和验证码：
@@ -50,18 +60,6 @@ pip install -r requirements.txt
 ```
 
 **重要**：`config.json` 已在 `.gitignore` 中排除，请勿提交到版本库。
-
-### 4. 安装 ChromeDriver
-
-程序已配置使用 `/usr/local/bin/chromedriver`，确保已安装：
-
-```bash
-# 检查 ChromeDriver 版本
-chromedriver --version
-
-# 如需重新安装（Chrome 151 对应 ChromeDriver 151）
-# 从 https://googlechromelabs.github.io/chrome-for-testing/ 下载
-```
 
 ### 4. 运行监控
 
