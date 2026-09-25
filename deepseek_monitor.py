@@ -93,7 +93,7 @@ class DeepSeekMonitor:
                 "pkill -9 -f 'chrome|chromedriver' 2>/dev/null || true",
                 shell=True,
                 capture_output=True
-            )
+            , check=True)
             logger.info("Chrome 进程清理完成")
         except Exception as e:
             logger.warning(f"清理进程时出错: {e}")
@@ -548,7 +548,7 @@ class DeepSeekMonitor:
                 capture_output=True,
                 text=True,
                 timeout=60  # 60秒超时
-            )
+            , check=True)
             return result.stdout, result.stderr, result.returncode
         except subprocess.TimeoutExpired:
             logger.error(f"命令执行超时: {command}")
