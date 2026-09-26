@@ -803,8 +803,10 @@ class DeepSeekMonitor:
 
                                         logger.info(f"已处理并回复对话: {conv_title}")
                                     elif message is None:
-                                        # 获取消息时发生异常，不标记为已处理，留到下一轮重试
-                                        logger.warning(f"对话 '{conv_title}' 获取消息异常，本轮跳过")
+                                        # 获取消息时发生异常，标记为已处理防止无限重试同一对话
+                                        # 新对话会在后续轮次以不同 URL ID 重新出现
+                                        logger.warning(f"对话 '{conv_title}' 获取消息异常，标记已处理并跳过")
+                                        self.processed_conversations.add(conv_url_id)
                                         continue
                                     else:
                                         # 返回空字符串表示已确认该对话不含 @ 命令
