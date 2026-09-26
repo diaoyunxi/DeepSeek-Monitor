@@ -7,6 +7,7 @@ DeepSeek 对话监控与命令执行工具
 当发现新对话且消息以 @ 开头时，执行对应 bash 命令并回复结果。
 """
 
+from collections import OrderedDict
 import json
 import logging
 import subprocess
@@ -43,6 +44,8 @@ LOGIN_URL = "https://chat.deepseek.com/"
 class DeepSeekMonitor:
     """DeepSeek 对话监控器"""
 
+    MAX_PROCESSED = 500  # 已处理对话集合上限，防止长期运行内存泄漏
+
     def __init__(self, config_path: str = "config.json"):
         """
         初始化监控器
@@ -53,7 +56,7 @@ class DeepSeekMonitor:
         self.config = self._load_config(config_path)
         self.driver: Optional[webdriver.Chrome] = None
         self.last_conversations: set = set()  # 上一秒的对话集合（存储url_id）
-        self.processed_conversations: set = set()  # 已处理过的对话集合（存储url_id）
+        self.processed_conversations: OrderedDict = OrderedDict()  # 已处理对话（FIFO，上限 MAX_PROCESSED）
         self.is_first_run: bool = True  # 是否首次运行
         self.conversation_titles: dict = {}  # url_id -> title 的映射
         self.profile_dir = self.config.get("profile_dir", "./browser_profile")
@@ -744,12 +747,12 @@ class DeepSeekMonitor:
                         # 首次运行：缓存所有现有对话，不处理
                         logger.info(f"首次运行，缓存 {len(current_conversations)} 个现有对话")
                         self.last_conversations = set(url_id for _, url_id in current_conversations)
-                        self.processed_conversations = set(url_id for _, url_id in current_conversations)
+                        self.processed_conversations = OrderedDict((url_id, None) for _, url_id in current_conversations)
                         self.is_first_run = False
                     else:
                         # 后续运行：只处理新增的对话（基于URL ID）
                         current_url_ids = set(url_id for _, url_id in current_conversations)
-                        new_url_ids = current_url_ids - self.last_conversations - self.processed_conversations
+                        new_url_ids = current_url_ids - self.last_conversations - set(self.processed_conversations.keys())
 
                         if new_url_ids:
                             # 找到新对话的标题
@@ -811,7 +814,10 @@ class DeepSeekMonitor:
                                         logger.info(f"对话 '{conv_title}' 不含 @ 命令，跳过")
 
                                     # 处理完标记为已处理，避免重复检查（使用URL ID）
-                                    self.processed_conversations.add(conv_url_id)
+                                    self.processed_conversations[conv_url_id] = None
+                                    # 超过上限时淘汰最早的记录
+                                    while len(self.processed_conversations) > self.MAX_PROCESSED:
+                                        self.processed_conversations.popitem(last=False)
                                     logger.info(f"已标记对话为已处理: {conv_title} (ID: {conv_url_id})")
                         else:
                             logger.info("未检测到新对话")
