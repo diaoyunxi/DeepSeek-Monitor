@@ -241,8 +241,8 @@ class DeepSeekMonitor:
             selectors = [
                 (By.XPATH, "//div[contains(@class, 'ds-button')]//span[contains(text(), '密码登录')]"),
                 (By.XPATH, "//div[contains(@class, 'ds-button')]//span[contains(text(), 'Login with password')]"),
-                (By.CSS_SELECTOR, ".ds-sign-in-form__social-link span:contains('密码登录')"),
-                (By.CSS_SELECTOR, ".ds-sign-in-form__social-link span:contains('Login with password')"),
+                (By.XPATH, "//div[contains(@class, 'ds-sign-in-form__social-link')]//span[contains(text(), '密码登录')]"),
+                (By.XPATH, "//div[contains(@class, 'ds-sign-in-form__social-link')]//span[contains(text(), 'Login with password')]"),
             ]
 
             for selector in selectors:
