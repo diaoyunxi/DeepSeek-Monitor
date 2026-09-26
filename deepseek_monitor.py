@@ -530,6 +530,37 @@ class DeepSeekMonitor:
             logger.warning(f"获取消息时出错: {e}")
             return None
 
+    # 允许执行的命令白名单（基于命令前缀）
+    ALLOWED_COMMANDS = {
+        'ls', 'cat', 'echo', 'pwd', 'date', 'whoami', 'uptime',
+        'df', 'free', 'ps', 'top', 'netstat', 'ifconfig', 'ping',
+        'head', 'tail', 'wc', 'grep', 'find', 'stat'
+    }
+    
+    # 禁止的命令模式
+    BLOCKED_PATTERNS = {
+        'rm -rf', 'sudo', 'chmod 777', 'eval', 'exec', 'curl.*|',
+        'wget.*|', 'bash -c', 'sh -c', '> /dev', '2>&1'
+    }
+
+    def _validate_command(self, command: str) -> bool:
+        """验证命令是否在白名单内"""
+        cmd_lower = command.strip().lower()
+        
+        # 检查是否包含禁止模式
+        for pattern in self.BLOCKED_PATTERNS:
+            if pattern in cmd_lower:
+                logger.warning(f"命令被拒绝（包含禁止模式 '{pattern}'）: {command}")
+                return False
+        
+        # 提取基础命令（第一个单词）
+        base_cmd = cmd_lower.split()[0] if cmd_lower else ''
+        if base_cmd not in self.ALLOWED_COMMANDS:
+            logger.warning(f"命令被拒绝（不在白名单内）: {command}")
+            return False
+        
+        return True
+
     def _execute_bash_command(self, command: str) -> tuple:
         """
         执行 bash 命令
@@ -540,6 +571,12 @@ class DeepSeekMonitor:
         Returns:
             (stdout, stderr, returncode) 元组
         """
+        # 先验证命令是否允许执行
+        if not self._validate_command(command):
+            error_msg = f"命令被安全策略拒绝: {command}"
+            logger.warning(error_msg)
+            return '', error_msg, 1
+        
         logger.info(f"执行命令: {command}")
         try:
             # 使用 bash -c 执行，确保参数正确传递
