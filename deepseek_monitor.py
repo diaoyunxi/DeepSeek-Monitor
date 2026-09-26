@@ -84,16 +84,23 @@ class DeepSeekMonitor:
 
     def _kill_stale_processes(self):
         """
-        杀死所有残留的 Chrome 和 ChromeDriver 进程
+        杀死所有残留的 Chrome 和 ChromeDriver 进程。
+        使用 shell=False + 完整路径，防止 PATH 劫持和命令注入 (ruff S602, S607)。
         """
+        import shutil
+        pkill_path = shutil.which("pkill")
+        if not pkill_path:
+            logger.debug("pkill 不可用，跳过进程清理")
+            return
         try:
             logger.info("正在清理残留的 Chrome 进程...")
-            # 杀死所有 chrome 和 chromedriver 进程
-            subprocess.run(
-                "pkill -9 -f 'chrome|chromedriver' 2>/dev/null || true",
-                shell=True,
-                capture_output=True
-            )
+            for pattern in ("chrome", "chromedriver"):
+                subprocess.run(
+                    [pkill_path, "-9", "-f", pattern],
+                    shell=False,
+                    capture_output=True,
+                    check=False
+                )
             logger.info("Chrome 进程清理完成")
         except Exception as e:
             logger.warning(f"清理进程时出错: {e}")
