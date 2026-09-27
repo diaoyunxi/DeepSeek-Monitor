@@ -538,6 +538,9 @@ class DeepSeekMonitor:
         "eval ", "exec ", "python -c",
     )
 
+    # 命令输出最大长度（字符数），超出则截断，防止内存问题或消息发送失败
+    MAX_OUTPUT_LENGTH = 10000
+
     def _execute_bash_command(self, command: str) -> tuple:
         """
         执行 bash 命令
@@ -570,7 +573,14 @@ class DeepSeekMonitor:
                 text=True,
                 timeout=60  # 60秒超时
             )
-            return result.stdout, result.stderr, result.returncode
+            # 截断过长输出，防止内存问题或消息发送失败
+            stdout = result.stdout
+            stderr = result.stderr
+            if len(stdout) > self.MAX_OUTPUT_LENGTH:
+                stdout = stdout[:self.MAX_OUTPUT_LENGTH] + f"\n... [输出已截断，原始长度 {len(result.stdout)} 字符]"
+            if len(stderr) > self.MAX_OUTPUT_LENGTH:
+                stderr = stderr[:self.MAX_OUTPUT_LENGTH] + f"\n... [输出已截断，原始长度 {len(result.stderr)} 字符]"
+            return stdout, stderr, result.returncode
         except subprocess.TimeoutExpired:
             logger.error(f"命令执行超时: {command}")
             return "", "命令执行超时", 1
