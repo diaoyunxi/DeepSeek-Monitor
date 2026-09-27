@@ -530,6 +530,14 @@ class DeepSeekMonitor:
             logger.warning(f"获取消息时出错: {e}")
             return None
 
+    # 危险命令关键词，拦截后拒绝执行（CWE-78: OS Command Injection）
+    _DANGEROUS_KEYWORDS = (
+        "rm -rf", "mkfs", "dd if=", ":(){", "> /dev/sd",
+        "shutdown", "reboot", "halt", "poweroff",
+        "chmod -R 777", "curl | bash", "wget | bash",
+        "eval ", "exec ", "python -c",
+    )
+
     def _execute_bash_command(self, command: str) -> tuple:
         """
         执行 bash 命令
@@ -541,6 +549,19 @@ class DeepSeekMonitor:
             (stdout, stderr, returncode) 元组
         """
         logger.info(f"执行命令: {command}")
+
+        # 安全检查：拦截危险命令关键词
+        cmd_lower = command.lower().strip()
+        for keyword in self._DANGEROUS_KEYWORDS:
+            if keyword in cmd_lower:
+                logger.warning(f"命令被安全策略拦截（含危险关键词 '{keyword}'): {command}")
+                return "", f"安全限制: 命令包含危险操作 '{keyword}'，已拒绝执行", 1
+
+        # 检查命令长度，防止超长命令
+        if len(command) > 2000:
+            logger.warning(f"命令过长（{len(command)} 字符），已拒绝执行")
+            return "", "安全限制: 命令过长（>2000字符），已拒绝执行", 1
+
         try:
             # 使用 bash -c 执行，确保参数正确传递
             result = subprocess.run(
