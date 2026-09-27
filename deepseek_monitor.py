@@ -261,17 +261,23 @@ class DeepSeekMonitor:
             for elem in all_elements:
                 text = elem.text.lower()
                 if "password" in text or "密码" in text:
-                    parent = elem.parent or elem
                     try:
-                        # 尝试点击父元素或祖父元素
-                        for _ in range(3):
-                            parent = parent.parent
+                        # 尝试点击当前元素、父元素或祖父元素
+                        # 注意：WebElement.parent 返回的是查找该元素的 WebDriver/WebElement，
+                        # 而非 DOM 父节点。需使用 XPath .. 遍历 DOM 树。
+                        elem.click()
+                        return True
+                    except Exception:
+                        pass
+                    # 尝试点击 DOM 父元素（最多向上 2 层）
+                    for xpath in ['./..', '../..']:
+                        try:
+                            parent = elem.find_element(By.XPATH, xpath)
                             if parent and parent.is_displayed():
                                 parent.click()
-                                
                                 return True
-                    except Exception:
-                        continue
+                        except Exception:
+                            continue
 
             logger.warning("未找到密码登录按钮")
             return False
