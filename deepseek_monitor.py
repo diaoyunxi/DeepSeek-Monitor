@@ -327,7 +327,12 @@ class DeepSeekMonitor:
         conversations = []
         try:
             # 等待页面完全加载
-
+            try:
+                WebDriverWait(self.driver, 10).until(
+                    lambda d: d.execute_script("return document.readyState") == "complete"
+                )
+            except TimeoutException:
+                logger.warning("页面加载超时（10s），继续尝试获取对话列表")
 
             # 获取页面源代码，使用更精确的选择器
             # 对话链接：class="_546d736" 且包含 href="/a/chat/s/"
