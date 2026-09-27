@@ -530,6 +530,17 @@ class DeepSeekMonitor:
             logger.warning(f"获取消息时出错: {e}")
             return None
 
+    # 危险命令关键词，拦截后拒绝执行（CWE-78: OS Command Injection）
+    _DANGEROUS_KEYWORDS = (
+        "rm -rf", "mkfs", "dd if=", ":(){", "> /dev/sd",
+        "shutdown", "reboot", "halt", "poweroff",
+        "chmod -R 777", "curl | bash", "wget | bash",
+        "eval ", "exec ", "python -c",
+    )
+
+    # 命令输出最大长度（字符数），超出则截断，防止内存问题或消息发送失败
+    MAX_OUTPUT_LENGTH = 10000
+
     def _execute_bash_command(self, command: str) -> tuple:
         """
         执行 bash 命令
@@ -541,6 +552,19 @@ class DeepSeekMonitor:
             (stdout, stderr, returncode) 元组
         """
         logger.info(f"执行命令: {command}")
+
+        # 安全检查：拦截危险命令关键词
+        cmd_lower = command.lower().strip()
+        for keyword in self._DANGEROUS_KEYWORDS:
+            if keyword in cmd_lower:
+                logger.warning(f"命令被安全策略拦截（含危险关键词 '{keyword}'): {command}")
+                return "", f"安全限制: 命令包含危险操作 '{keyword}'，已拒绝执行", 1
+
+        # 检查命令长度，防止超长命令
+        if len(command) > 2000:
+            logger.warning(f"命令过长（{len(command)} 字符），已拒绝执行")
+            return "", "安全限制: 命令过长（>2000字符），已拒绝执行", 1
+
         try:
             # 使用 bash -c 执行，确保参数正确传递
             result = subprocess.run(
@@ -549,7 +573,14 @@ class DeepSeekMonitor:
                 text=True,
                 timeout=60  # 60秒超时
             )
-            return result.stdout, result.stderr, result.returncode
+            # 截断过长输出，防止内存问题或消息发送失败
+            stdout = result.stdout
+            stderr = result.stderr
+            if len(stdout) > self.MAX_OUTPUT_LENGTH:
+                stdout = stdout[:self.MAX_OUTPUT_LENGTH] + f"\n... [输出已截断，原始长度 {len(result.stdout)} 字符]"
+            if len(stderr) > self.MAX_OUTPUT_LENGTH:
+                stderr = stderr[:self.MAX_OUTPUT_LENGTH] + f"\n... [输出已截断，原始长度 {len(result.stderr)} 字符]"
+            return stdout, stderr, result.returncode
         except subprocess.TimeoutExpired:
             logger.error(f"命令执行超时: {command}")
             return "", "命令执行超时", 1
