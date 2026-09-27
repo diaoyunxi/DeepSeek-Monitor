@@ -327,7 +327,12 @@ class DeepSeekMonitor:
         conversations = []
         try:
             # 等待页面完全加载
-
+            try:
+                WebDriverWait(self.driver, 10).until(
+                    lambda d: d.execute_script("return document.readyState") == "complete"
+                )
+            except TimeoutException:
+                logger.warning("页面加载超时（10s），继续尝试获取对话列表")
 
             # 获取页面源代码，使用更精确的选择器
             # 对话链接：class="_546d736" 且包含 href="/a/chat/s/"
@@ -698,9 +703,14 @@ class DeepSeekMonitor:
 
                 # 检查文本是否出现在页面中
                 # 注意：多行消息在页面渲染后，空白（换行/空格）格式可能与原文不同
-                # （如段落间空行），因此先去除所有空白字符再做包含性比较
+                # （如段落间空行），因此将连续空白归一化为单空格后再做包含性比较。
+                # 修复：之前使用 ''.join(text.split()) 移除所有空白字符，
+                # 会导致 "ls -la" 匹配到 "ls-la" 等完全不同的文本（误报）。
+                # 改用 ' '.join(text.split()) 保留词边界。
+                import re as _re
                 body_text = self.driver.find_element(By.TAG_NAME, "body").text
-                text_in_page = ''.join(expected_text.split()) in ''.join(body_text.split())
+                _norm = lambda t: ' '.join(t.split())
+                text_in_page = _norm(expected_text) in _norm(body_text)
 
                 # 验证成功条件：输入框清空 AND (文本在页面中 OR URL已变化)
                 if input_empty and (text_in_page or url_changed):
