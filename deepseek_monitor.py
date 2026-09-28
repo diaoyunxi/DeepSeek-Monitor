@@ -88,10 +88,16 @@ class DeepSeekMonitor:
         """
         try:
             logger.info("正在清理残留的 Chrome 进程...")
-            # 杀死所有 chrome 和 chromedriver 进程
+            # 使用 shell=False 防止命令注入 (CWE-78)
+            # 分别杀死 chrome 和 chromedriver 进程
             subprocess.run(
-                "pkill -9 -f 'chrome|chromedriver' 2>/dev/null || true",
-                shell=True,
+                ["pkill", "-9", "-f", "chrome"],
+                shell=False,
+                capture_output=True
+            )
+            subprocess.run(
+                ["pkill", "-9", "-f", "chromedriver"],
+                shell=False,
                 capture_output=True
             )
             logger.info("Chrome 进程清理完成")
@@ -253,7 +259,8 @@ class DeepSeekMonitor:
                             elem.click()
                             
                             return True
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"按钮点击尝试失败: {e}")
                     continue
 
             # 备用方案：查找包含"password"或"密码"的元素
@@ -270,7 +277,8 @@ class DeepSeekMonitor:
                                 parent.click()
                                 
                                 return True
-                    except Exception:
+                    except Exception as e:
+                        logger.debug(f"密码登录按钮尝试失败: {e}")
                         continue
 
             logger.warning("未找到密码登录按钮")
@@ -300,7 +308,8 @@ class DeepSeekMonitor:
                             if "log in" in text.lower() or "登录" in text:
                                 elem.click()
                                 return True
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"按钮点击尝试失败: {e}")
                     continue
 
             # 备用：点击最后一个可见的按钮
@@ -354,7 +363,8 @@ class DeepSeekMonitor:
                             conversations.append((title, url_id))
                             # 更新标题映射
                             self.conversation_titles[url_id] = title
-                    except Exception:
+                    except Exception as e:
+                        logger.debug(f"对话标题提取失败: {e}")
                         # 如果找不到标题元素，跳过
                         continue
             else:
