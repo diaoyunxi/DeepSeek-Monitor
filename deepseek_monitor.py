@@ -818,7 +818,11 @@ class DeepSeekMonitor:
 
                     # 更新上一秒的对话列表（存储URL ID）
                     current_url_ids = set(url_id for _, url_id in current_conversations)
-                    self.last_conversations = current_url_ids
+                    # 未处理的新对话（超出 [:3] 上限或获取消息异常重试中）不应记入
+                    # last_conversations，否则下一轮会因同时存在于 current 和 last
+                    # 而被永久跳过，永远不会被处理。
+                    unprocessed_new = new_url_ids - self.processed_conversations
+                    self.last_conversations = current_url_ids - unprocessed_new
                     reconnect_count = 0  # 重置重连计数
 
                 except Exception as e:
