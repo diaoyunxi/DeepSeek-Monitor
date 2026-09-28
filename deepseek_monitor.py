@@ -379,8 +379,8 @@ class DeepSeekMonitor:
                     import re
                     year_pattern = re.compile(r'^\d{4}[-/]\d{2}')
 
-                    for line in lines:
-                        line = line.strip()
+                    for raw_line in lines:
+                        line = raw_line.strip()
                         # 过滤条件
                         if not line:
                             continue
