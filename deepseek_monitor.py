@@ -8,6 +8,7 @@ DeepSeek 对话监控与命令执行工具
 """
 
 import json
+import signal
 import logging
 import subprocess
 from typing import Optional
@@ -864,6 +865,16 @@ class DeepSeekMonitor:
             self.driver.quit()
             logger.info("浏览器已关闭")
 
+
+
+def _graceful_shutdown(signum, frame):
+    """优雅关闭：清理浏览器资源后退出"""
+    logger.info("Received shutdown signal, cleaning up...")
+    import sys
+    sys.exit(0)
+
+signal.signal(signal.SIGTERM, _graceful_shutdown)
+signal.signal(signal.SIGINT, _graceful_shutdown)
 
 if __name__ == "__main__":
     monitor = DeepSeekMonitor()
