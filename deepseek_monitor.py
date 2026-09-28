@@ -63,7 +63,11 @@ class DeepSeekMonitor:
         """加载配置文件"""
         try:
             with open(config_path, "r", encoding="utf-8") as f:
-                config = json.load(f)
+                try:
+                    config = json.load(f)
+                except json.JSONDecodeError as e:
+                    logger.error(f"配置文件 JSON 解析失败: {e}，使用默认配置")
+                    config = {}
             # 验证必需字段：至少需要 phone
             if "phone" not in config:
                 raise ValueError("配置文件中缺少 phone 字段")
