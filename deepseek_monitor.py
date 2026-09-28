@@ -339,9 +339,18 @@ class DeepSeekMonitor:
             if conversation_links:
                 for link in conversation_links:
                     try:
-                        # 获取对话标题（在 class="c08e6e93" 的 div 中）
-                        title_elem = link.find_element(By.CSS_SELECTOR, "div.c08e6e93")
-                        title = title_elem.text.strip()
+                        # 获取对话标题（尝试多个选择器，兼容 DeepSeek UI 更新）
+                        title = ""
+                        for sel in ["div.c08e6e93", "[class*='title']", "span"]:
+                            try:
+                                title_elem = link.find_element(By.CSS_SELECTOR, sel)
+                                title = title_elem.text.strip()
+                                if title:
+                                    break
+                            except Exception:
+                                continue
+                        if not title:
+                            title = link.text.strip()
                         # 提取URL中的对话ID
                         href = link.get_attribute('href')
                         url_id = href.split('/')[-1] if href else ''
