@@ -54,6 +54,9 @@ class DeepSeekMonitor:
         self.driver: Optional[webdriver.Chrome] = None
         self.last_conversations: set = set()  # 上一秒的对话集合（存储url_id）
         self.processed_conversations: set = set()  # 已处理过的对话集合（存储url_id）
+        # 已处理对话集合的大小上限。超过时清除最早的一半条目，防止长期运行内存泄漏。
+        # 按 100 对话/天估算，1000 条约覆盖 10 天，足够防止重复处理。
+        self._max_processed = 1000
         self.is_first_run: bool = True  # 是否首次运行
         self.conversation_titles: dict = {}  # url_id -> title 的映射
         self.profile_dir = self.config.get("profile_dir", "./browser_profile")
@@ -813,6 +816,15 @@ class DeepSeekMonitor:
                                     # 处理完标记为已处理，避免重复检查（使用URL ID）
                                     self.processed_conversations.add(conv_url_id)
                                     logger.info(f"已标记对话为已处理: {conv_title} (ID: {conv_url_id})")
+
+                                    # 防止 processed_conversations 集合无限增长导致内存泄漏
+                                    if len(self.processed_conversations) > self._max_processed:
+                                        excess = len(self.processed_conversations) - self._max_processed // 2
+                                        to_remove = list(self.processed_conversations)[:excess]
+                                        for old_id in to_remove:
+                                            self.processed_conversations.discard(old_id)
+                                            self.conversation_titles.pop(old_id, None)
+                                        logger.info(f"清理 processed_conversations: 移除 {len(to_remove)} 条旧记录")
                         else:
                             logger.info("未检测到新对话")
 
