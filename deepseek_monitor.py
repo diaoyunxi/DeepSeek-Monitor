@@ -834,8 +834,8 @@ class DeepSeekMonitor:
                             if self.driver:
                                 try:
                                     self.driver.quit()
-                                except:
-                                    pass
+                                except Exception as quit_err:
+                                    logger.debug(f"driver.quit() 失败（重连中可忽略）: {quit_err}")
                             # 清理残留进程
                             self._kill_stale_processes()
                             
