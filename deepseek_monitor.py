@@ -84,17 +84,23 @@ class DeepSeekMonitor:
 
     def _kill_stale_processes(self):
         """
-        杀死所有残留的 Chrome 和 ChromeDriver 进程
+        杀死当前用户残留的 Chrome 和 ChromeDriver 进程
+        
+        使用 --uid 限制为当前用户的进程，避免在多用户环境下误杀其他用户的进程。
+        使用 shell=False + 列表参数防止命令注入。
         """
+        import os
         try:
-            logger.info("正在清理残留的 Chrome 进程...")
-            # 杀死所有 chrome 和 chromedriver 进程
-            subprocess.run(
-                "pkill -9 -f 'chrome|chromedriver' 2>/dev/null || true",
-                shell=True,
-                capture_output=True
-            )
-            logger.info("Chrome 进程清理完成")
+            logger.info("正在清理当前用户残留的 Chrome 进程...")
+            uid = str(os.getuid()) if hasattr(os, 'getuid') else None
+            
+            # 构建 pkill 命令：仅杀死当前用户的 chrome/chromedriver 进程
+            cmd = ["/usr/bin/pkill", "-9", "-f", "chrome|chromedriver"]
+            if uid:
+                cmd.extend(["--uid", uid])
+            
+            subprocess.run(cmd, shell=False, capture_output=True)
+            logger.info(f"Chrome 进程清理完成 (uid={uid})")
         except Exception as e:
             logger.warning(f"清理进程时出错: {e}")
 
