@@ -54,6 +54,7 @@ class DeepSeekMonitor:
         self.driver: Optional[webdriver.Chrome] = None
         self.last_conversations: set = set()  # 上一秒的对话集合（存储url_id）
         self.processed_conversations: set = set()  # 已处理过的对话集合（存储url_id）
+        self.MAX_PROCESSED_CONVERSATIONS = 10000  # 已处理对话集合上限，防止长期运行内存泄漏
         self.is_first_run: bool = True  # 是否首次运行
         self.conversation_titles: dict = {}  # url_id -> title 的映射
         self.profile_dir = self.config.get("profile_dir", "./browser_profile")
@@ -812,6 +813,12 @@ class DeepSeekMonitor:
 
                                     # 处理完标记为已处理，避免重复检查（使用URL ID）
                                     self.processed_conversations.add(conv_url_id)
+                                    # 定期清理过期的已处理对话记录，防止集合无限增长
+                                    if len(self.processed_conversations) > self.MAX_PROCESSED_CONVERSATIONS:
+                                        excess = len(self.processed_conversations) - self.MAX_PROCESSED_CONVERSATIONS
+                                        for _ in range(excess):
+                                            self.processed_conversations.pop()
+                                        logger.info(f"已清理 {excess} 条过期已处理对话记录")
                                     logger.info(f"已标记对话为已处理: {conv_title} (ID: {conv_url_id})")
                         else:
                             logger.info("未检测到新对话")
