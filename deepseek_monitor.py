@@ -530,9 +530,31 @@ class DeepSeekMonitor:
             logger.warning(f"获取消息时出错: {e}")
             return None
 
+    # 危险命令模式黑名单（小写匹配）
+    _DANGEROUS_PATTERNS = [
+        r'\brm\s+(-[a-zA-Z]*)?r[a-zA-Z]*\s+/',  # rm -rf / 类
+        r'\bmkfs\b', r'\bdd\s+if=', r':\(\)\s*\{',             # 磁盘破坏
+        r'\bshutdown\b', r'\breboot\b', r'\bhalt\b',              # 系统关机
+        r'\bpoweroff\b', r'\binit\s+[06]\b',
+        r'\|\s*bash\b', r'\|\s*sh\b', r'\|\s*python',          # 管道执行
+        r'\bcurl\b.*\|', r'\bwget\b.*\|',                          # 下载后管道执行
+        r'\bsudo\s+su\b', r'\bsudo\s+-i\b',                       # 提权
+        r'\beval\b', r'\bexec\b',                                    # 动态执行
+        r'chmod\s+-R\s+777\s+/',                                      # 全开放权限
+        r'>\s*/dev/sd', r'>\s*/dev/nvme',                              # 写设备
+    ]
+
+    # 命令最大长度
+    _MAX_CMD_LENGTH = 512
+
     def _execute_bash_command(self, command: str) -> tuple:
         """
-        执行 bash 命令
+        执行 bash 命令（带安全校验）
+
+        安全措施:
+        - 命令长度限制
+        - 危险命令模式黑名单
+        - 超时保护
 
         Args:
             command: 要执行的命令
@@ -540,18 +562,36 @@ class DeepSeekMonitor:
         Returns:
             (stdout, stderr, returncode) 元组
         """
-        logger.info(f"执行命令: {command}")
+        if not command or not command.strip():
+            return "", "命令为空", 1
+
+        cmd = command.strip()
+
+        # 长度限制
+        if len(cmd) > self._MAX_CMD_LENGTH:
+            msg = f"命令过长（{len(cmd)} 字符），最大允许 {self._MAX_CMD_LENGTH} 字符"
+            logger.warning("命令被拦截: %s", msg)
+            return "", msg, 1
+
+        # 危险模式黑名单检查
+        import re as _re
+        for pattern in self._DANGEROUS_PATTERNS:
+            if _re.search(pattern, cmd, _re.IGNORECASE):
+                msg = f"命令匹配危险模式，拒绝执行"
+                logger.warning("危险命令被拦截: %s", cmd[:100])
+                return "", msg, 1
+
+        logger.info(f"执行命令: {cmd}")
         try:
-            # 使用 bash -c 执行，确保参数正确传递
             result = subprocess.run(
-                ['bash', '-c', command],
+                ['bash', '-c', cmd],
                 capture_output=True,
                 text=True,
                 timeout=60  # 60秒超时
             )
             return result.stdout, result.stderr, result.returncode
         except subprocess.TimeoutExpired:
-            logger.error(f"命令执行超时: {command}")
+            logger.error(f"命令执行超时: {cmd}")
             return "", "命令执行超时", 1
         except Exception as e:
             logger.error(f"命令执行出错: {e}")
