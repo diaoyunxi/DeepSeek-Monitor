@@ -40,6 +40,9 @@ logger = logging.getLogger(__name__)
 LOGIN_URL = "https://chat.deepseek.com/"
 
 
+# 最大重连次数，防止无限重试
+MAX_RECONNECT_ATTEMPTS = 10
+
 class DeepSeekMonitor:
     """DeepSeek 对话监控器"""
 
