@@ -37,17 +37,41 @@ pip install -r requirements.txt
 # 访问 https://chromedriver.chromium.org/ 下载对应版本
 ```
 
-### 3. 配置账号密码
+### 3. 配置登录信息
 
-编辑 `config.json` 文件，填入你的 DeepSeek 手机号和验证码：
+编辑 `config.json` 文件，程序支持两种登录模式：
+
+#### 模式 A：验证码登录（默认）
 
 ```json
 {
     "phone": "你的DeepSeek手机号",
+    "login_type": "code",
     "code": "验证码",
     "profile_dir": "./browser_profile"
 }
 ```
+
+#### 模式 B：密码登录
+
+```json
+{
+    "phone": "你的DeepSeek手机号",
+    "login_type": "password",
+    "password": "你的密码",
+    "profile_dir": "./browser_profile"
+}
+```
+
+**配置字段说明**：
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `phone` | ✅ | DeepSeek 注册手机号 |
+| `login_type` | ❌ | `"code"`（默认）或 `"password"` |
+| `code` | 验证码模式必填 | 登录验证码 |
+| `password` | 密码模式必填 | 登录密码 |
+| `profile_dir` | ❌ | 浏览器 profile 目录，默认 `./browser_profile` |
 
 **重要**：`config.json` 已在 `.gitignore` 中排除，请勿提交到版本库。
 
