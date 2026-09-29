@@ -861,8 +861,13 @@ class DeepSeekMonitor:
         """关闭浏览器并清理资源"""
         if self.driver:
             logger.info("正在关闭浏览器...")
-            self.driver.quit()
+            try:
+                self.driver.quit()
+            except Exception as e:
+                logger.warning(f"关闭浏览器时出错: {e}")
             logger.info("浏览器已关闭")
+        # 清理可能残留的孤儿 Chrome/ChromeDriver 进程
+        self._kill_stale_processes()
 
 
 if __name__ == "__main__":
