@@ -9,6 +9,7 @@ DeepSeek 对话监控与命令执行工具
 
 import json
 import logging
+import shutil
 import subprocess
 from typing import Optional
 
@@ -57,7 +58,7 @@ class DeepSeekMonitor:
         self.is_first_run: bool = True  # 是否首次运行
         self.conversation_titles: dict = {}  # url_id -> title 的映射
         self.profile_dir = self.config.get("profile_dir", "./browser_profile")
-        self.chrome_driver_path = "/usr/local/bin/chromedriver"
+        self.chrome_driver_path = shutil.which("chromedriver") or "/usr/local/bin/chromedriver"
 
     def _load_config(self, config_path: str) -> dict:
         """加载配置文件"""
@@ -90,8 +91,8 @@ class DeepSeekMonitor:
             logger.info("正在清理残留的 Chrome 进程...")
             # 杀死所有 chrome 和 chromedriver 进程
             subprocess.run(
-                "pkill -9 -f 'chrome|chromedriver' 2>/dev/null || true",
-                shell=True,
+                ["pkill", "-9", "-f", "chrome|chromedriver"],
+                shell=False,
                 capture_output=True
             )
             logger.info("Chrome 进程清理完成")
