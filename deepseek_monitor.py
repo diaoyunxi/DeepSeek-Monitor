@@ -812,6 +812,12 @@ class DeepSeekMonitor:
 
                                     # 处理完标记为已处理，避免重复检查（使用URL ID）
                                     self.processed_conversations.add(conv_url_id)
+            # 清理：超过上限时保留最新的一半
+            if len(self.processed_conversations) > self._max_processed:
+                to_remove = list(self.processed_conversations)[:self._max_processed // 2]
+                for item in to_remove:
+                    self.processed_conversations.discard(item)
+                logger.info(f"清理已处理对话记录: 移除 {len(to_remove)} 条，保留 {len(self.processed_conversations)} 条")
                                     logger.info(f"已标记对话为已处理: {conv_title} (ID: {conv_url_id})")
                         else:
                             logger.info("未检测到新对话")
