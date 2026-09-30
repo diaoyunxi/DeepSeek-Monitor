@@ -858,11 +858,16 @@ class DeepSeekMonitor:
             self.shutdown()
 
     def shutdown(self):
-        """关闭浏览器并清理资源"""
+        """关闭浏览器并清理资源（防御式：driver.quit() 失败时强制杀进程）"""
         if self.driver:
             logger.info("正在关闭浏览器...")
-            self.driver.quit()
-            logger.info("浏览器已关闭")
+            try:
+                self.driver.quit()
+                logger.info("浏览器已关闭")
+            except Exception as e:
+                logger.warning(f"driver.quit() 失败，将强制清理进程: {e}")
+        # 无论 quit 是否成功，都清理残留 Chrome 进程
+        self._kill_stale_processes()
 
 
 if __name__ == "__main__":
