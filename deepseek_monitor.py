@@ -266,9 +266,12 @@ class DeepSeekMonitor:
                         # 尝试点击父元素或祖父元素
                         for _ in range(3):
                             parent = parent.parent
-                            if parent and parent.is_displayed():
+                            # parent.parent 在 Selenium 中可能返回 WebDriver 实例
+                            # （而非 WebElement），此时无 click/is_displayed 方法
+                            if not isinstance(parent, webdriver.remote.webelement.WebElement):
+                                break
+                            if parent.is_displayed():
                                 parent.click()
-                                
                                 return True
                     except Exception:
                         continue
