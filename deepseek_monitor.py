@@ -306,7 +306,7 @@ class DeepSeekMonitor:
             # 备用：点击最后一个可见的按钮
             buttons = self.driver.find_elements(By.CSS_SELECTOR, "[role='button']")
             for btn in reversed(buttons):
-                if btn.is_displayed() and btn.is_enabled():
+                if btn.is_displayed() and btn.is_enabled() and elem_text == title:
                     btn.click()
                     return True
 
@@ -425,7 +425,7 @@ class DeepSeekMonitor:
             for elem in clickables:
                 try:
                     elem_text = elem.text.strip()
-                    if title in elem_text or elem_text == title:
+                    if elem_text == title:
                         elem.click()
                         logger.info(f"已点击对话: {title}")
                         # 等待页面加载
