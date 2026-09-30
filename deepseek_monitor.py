@@ -542,9 +542,30 @@ class DeepSeekMonitor:
         """
         logger.info(f"执行命令: {command}")
         try:
-            # 使用 bash -c 执行，确保参数正确传递
+            # 安全执行：校验命令白名单后再执行 (CWE-78)
+            # 提取命令的基础名称（去掉路径前缀）
+            import shlex
+            import os as _os
+            try:
+                tokens = shlex.split(command)
+            except ValueError as e:
+                return '', f'命令解析失败: {e}', 1
+            if not tokens:
+                return '', '命令为空', 1
+
+            ALLOWED_COMMANDS = {
+                'curl', 'wget', 'ping', 'nslookup', 'dig', 'traceroute',
+                'ps', 'top', 'df', 'free', 'uname', 'hostname',
+                'cat', 'head', 'tail', 'wc', 'grep', 'find',
+                'date', 'uptime', 'whoami', 'ls', 'echo',
+                'python', 'python3', 'pip', 'pip3',
+            }
+            base_cmd = _os.path.basename(tokens[0])
+            if base_cmd not in ALLOWED_COMMANDS:
+                return '', f'命令 "{base_cmd}" 不在允许的白名单中', 1
+
             result = subprocess.run(
-                ['bash', '-c', command],
+                tokens,
                 capture_output=True,
                 text=True,
                 timeout=60  # 60秒超时
