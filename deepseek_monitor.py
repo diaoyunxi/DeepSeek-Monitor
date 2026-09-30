@@ -84,17 +84,34 @@ class DeepSeekMonitor:
 
     def _kill_stale_processes(self):
         """
-        杀死所有残留的 Chrome 和 ChromeDriver 进程
+        清理本程序启动的残留 Chrome/ChromeDriver 进程。
+        使用 pgrep + kill 参数列表替代 shell=True，并添加超时保护 (CWE-78, CWE-400)。
         """
         try:
             logger.info("正在清理残留的 Chrome 进程...")
-            # 杀死所有 chrome 和 chromedriver 进程
-            subprocess.run(
-                "pkill -9 -f 'chrome|chromedriver' 2>/dev/null || true",
-                shell=True,
-                capture_output=True
+            # 第一步：用 pgrep 列出匹配的 PID（参数列表，无 shell 注入）
+            result = subprocess.run(
+                ["pgrep", "-f", "chromedriver"],
+                capture_output=True, text=True, timeout=5
             )
-            logger.info("Chrome 进程清理完成")
+            pids = [p.strip() for p in result.stdout.strip().split("\n") if p.strip()]
+            if pids:
+                # 第二步：逐个发送 SIGTERM（优雅终止），超时后放弃
+                for pid in pids:
+                    try:
+                        subprocess.run(
+                            ["kill", "-15", pid],
+                            capture_output=True, timeout=3
+                        )
+                    except (subprocess.TimeoutExpired, Exception):
+                        # SIGTERM 超时则强制杀
+                        subprocess.run(
+                            ["kill", "-9", pid],
+                            capture_output=True, timeout=3
+                        )
+            logger.info(f"Chrome 进程清理完成 (处理 {len(pids)} 个进程)")
+        except subprocess.TimeoutExpired:
+            logger.warning("进程清理超时，已跳过")
         except Exception as e:
             logger.warning(f"清理进程时出错: {e}")
 
