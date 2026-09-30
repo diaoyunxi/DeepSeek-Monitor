@@ -285,9 +285,9 @@ class DeepSeekMonitor:
         try:
             # 尝试多种选择器
             selectors = [
-                (By.CSS_SELECTOR, "div.ds-button[role='button']:has-text('Log in')"),
-                (By.XPATH, "//div[@role='button' and contains(text(), 'Log in')]"),
-                (By.XPATH, "//div[@role='button' and contains(text(), '登录')]"),
+                (By.XPATH, "//div[contains(@class, 'ds-button') and @role='button' and contains(., 'Log in')]"),
+                (By.XPATH, "//div[@role='button' and contains(., 'Log in')]"),
+                (By.XPATH, "//div[@role='button' and contains(., '登录')]"),
                 (By.CSS_SELECTOR, ".ds-button[role='button']"),
             ]
 
