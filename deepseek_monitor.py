@@ -9,6 +9,8 @@ DeepSeek 对话监控与命令执行工具
 
 import json
 import logging
+import re
+import shlex
 import subprocess
 from typing import Optional
 
@@ -38,6 +40,19 @@ logger = logging.getLogger(__name__)
 
 # DeepSeek 登录页面 URL
 LOGIN_URL = "https://chat.deepseek.com/"
+
+
+
+# ── 命令白名单（安全策略）──────────────────────────────────────
+# 仅允许以下安全命令执行，其他命令一律拒绝，防止远程任意代码执行（CWE-78）
+ALLOWED_COMMANDS = frozenset({
+    "ls", "cat", "df", "ps", "uptime", "free", "head", "tail",
+    "grep", "wc", "date", "whoami", "id", "uname", "ifconfig",
+    "ip", "netstat", "ss", "top", "du", "echo", "pwd", "hostname",
+})
+
+# 禁止的 shell 元字符（管道、重定向、命令替换等），防止命令注入
+_BLOCKED_META_PATTERN = re.compile(r"[|;\`\$()>&<]")
 
 
 class DeepSeekMonitor:
@@ -530,9 +545,31 @@ class DeepSeekMonitor:
             logger.warning(f"获取消息时出错: {e}")
             return None
 
+    def _validate_command(self, command: str) -> tuple:
+        """校验命令是否在白名单内且不含危险字符。
+        Returns: (is_valid, reason)
+        """
+        if not command or not command.strip():
+            return False, "命令为空"
+        cmd_stripped = command.strip()
+        if len(cmd_stripped) > 1024:
+            return False, f"命令过长（{len(cmd_stripped)} 字符），最大 1024"
+        if _BLOCKED_META_PATTERN.search(cmd_stripped):
+            return False, "命令包含危险字符（管道/重定向/命令替换等）"
+        try:
+            parts = shlex.split(cmd_stripped)
+        except ValueError as e:
+            return False, f"命令解析失败: {e}"
+        if not parts:
+            return False, "命令为空"
+        base_cmd = parts[0].split("/")[-1]
+        if base_cmd not in ALLOWED_COMMANDS:
+            return False, f"命令 '{base_cmd}' 不在白名单中。允许: {', '.join(sorted(ALLOWED_COMMANDS))}"
+        return True, ""
+
     def _execute_bash_command(self, command: str) -> tuple:
         """
-        执行 bash 命令
+        执行 bash 命令（带白名单校验）
 
         Args:
             command: 要执行的命令
@@ -540,6 +577,12 @@ class DeepSeekMonitor:
         Returns:
             (stdout, stderr, returncode) 元组
         """
+        # 安全校验：白名单 + 危险字符检查
+        is_valid, reason = self._validate_command(command)
+        if not is_valid:
+            logger.warning(f"命令被拒绝: {reason} | 原始命令: {command[:80]}")
+            return "", f"命令被拒绝: {reason}", 1
+
         logger.info(f"执行命令: {command}")
         try:
             # 使用 bash -c 执行，确保参数正确传递
