@@ -1,3 +1,5 @@
+import signal
+import os
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -58,6 +60,7 @@ class DeepSeekMonitor:
         self.conversation_titles: dict = {}  # url_id -> title 的映射
         self.profile_dir = self.config.get("profile_dir", "./browser_profile")
         self.chrome_driver_path = "/usr/local/bin/chromedriver"
+        self.managed_processes: list = []  # 跟踪本程序启动的进程 PID，避免全局 pkill
 
     def _load_config(self, config_path: str) -> dict:
         """加载配置文件"""
@@ -84,19 +87,26 @@ class DeepSeekMonitor:
 
     def _kill_stale_processes(self):
         """
-        杀死所有残留的 Chrome 和 ChromeDriver 进程
+        仅清理本程序启动的 Chrome/ChromeDriver 进程，避免误杀用户浏览器
+        通过跟踪的 PID 列表精确终止，不再使用全局 pkill
         """
         try:
-            logger.info("正在清理残留的 Chrome 进程...")
-            # 杀死所有 chrome 和 chromedriver 进程
-            subprocess.run(
-                "pkill -9 -f 'chrome|chromedriver' 2>/dev/null || true",
-                shell=True,
-                capture_output=True
-            )
+            if not self.managed_processes:
+                logger.debug("无需清理：没有跟踪的进程")
+                return
+            logger.info(f"正在清理 {len(self.managed_processes)} 个跟踪的 Chrome 进程...")
+            for pid in self.managed_processes:
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                    logger.debug(f"已发送 SIGTERM 到进程 {pid}")
+                except ProcessLookupError:
+                    pass  # 进程已退出
+                except PermissionError:
+                    logger.warning(f"无权限终止进程 {pid}")
+            self.managed_processes.clear()
             logger.info("Chrome 进程清理完成")
         except Exception as e:
-            logger.warning(f"清理进程时出错: {e}")
+            logger.error(f"清理进程时出错: {e}")
 
     def _setup_driver(self) -> webdriver.Chrome:
         """
