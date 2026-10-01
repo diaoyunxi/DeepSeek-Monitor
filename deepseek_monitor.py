@@ -848,6 +848,7 @@ class DeepSeekMonitor:
                         logger.warning(f"监控过程中出错: {e}")
 
                 # 短暂等待后继续
+                time.sleep(3)
                 
 
         except KeyboardInterrupt:
