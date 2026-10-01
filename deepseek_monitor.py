@@ -73,7 +73,10 @@ class DeepSeekMonitor:
                 raise ValueError("密码登录模式需要 password 字段")
             elif login_type == "code" and "code" not in config:
                 raise ValueError("验证码登录模式需要 code 字段")
-            logger.info(f"成功加载配置文件: {config_path}")
+            # 安全日志：脱敏输出敏感字段 (CWE-532)
+            safe_config = {k: ("***" if k in ("password", "code", "phone") else v)
+                          for k, v in config.items()}
+            logger.info(f"成功加载配置文件: {config_path}, 配置项: {list(safe_config.keys())}")
             return config
         except FileNotFoundError:
             logger.error(f"配置文件不存在: {config_path}")
