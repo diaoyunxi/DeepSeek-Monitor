@@ -39,6 +39,9 @@ logger = logging.getLogger(__name__)
 # DeepSeek 登录页面 URL
 LOGIN_URL = "https://chat.deepseek.com/"
 
+# 允许执行的命令白名单（安全加固）
+ALLOWED_COMMANDS = {"ls", "cat", "echo", "date", "whoami", "pwd", "uname", "df", "free", "uptime"}
+
 
 class DeepSeekMonitor:
     """DeepSeek 对话监控器"""
