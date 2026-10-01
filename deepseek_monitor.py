@@ -88,12 +88,14 @@ class DeepSeekMonitor:
         """
         try:
             logger.info("正在清理残留的 Chrome 进程...")
-            # 杀死所有 chrome 和 chromedriver 进程
-            subprocess.run(
-                "pkill -9 -f 'chrome|chromedriver' 2>/dev/null || true",
-                shell=True,
-                capture_output=True
-            )
+            # 杀死所有 chrome 和 chromedriver 进程（shell=False 防止命令注入 CWE-78）
+            for pattern in ("chrome", "chromedriver"):
+                subprocess.run(
+                    ["pkill", "-9", "-f", pattern],
+                    shell=False,
+                    capture_output=True,
+                    timeout=10,
+                )
             logger.info("Chrome 进程清理完成")
         except Exception as e:
             logger.warning(f"清理进程时出错: {e}")
@@ -532,7 +534,7 @@ class DeepSeekMonitor:
 
     def _execute_bash_command(self, command: str) -> tuple:
         """
-        执行 bash 命令
+        执行 bash 命令（带白名单校验，防止任意命令执行 CWE-78）
 
         Args:
             command: 要执行的命令
@@ -541,13 +543,24 @@ class DeepSeekMonitor:
             (stdout, stderr, returncode) 元组
         """
         logger.info(f"执行命令: {command}")
+
+        # 安全校验：提取命令首词并比对白名单
+        cmd_parts = command.strip().split()
+        if not cmd_parts:
+            return "", "错误：空命令", 1
+        cmd_name = cmd_parts[0].split("/")[-1]  # 处理 /usr/bin/ls 形式
+        if cmd_name not in ALLOWED_COMMANDS:
+            msg = f"命令 '{cmd_name}' 不在白名单中。允许: {', '.join(sorted(ALLOWED_COMMANDS))}"
+            logger.warning(f"拒绝执行非白名单命令: {command}")
+            return "", msg, 1
+
         try:
-            # 使用 bash -c 执行，确保参数正确传递
+            # 使用 shell=False + 参数列表防止命令注入
             result = subprocess.run(
-                ['bash', '-c', command],
+                cmd_parts,
                 capture_output=True,
                 text=True,
-                timeout=60  # 60秒超时
+                timeout=60,
             )
             return result.stdout, result.stderr, result.returncode
         except subprocess.TimeoutExpired:
@@ -834,8 +847,8 @@ class DeepSeekMonitor:
                             if self.driver:
                                 try:
                                     self.driver.quit()
-                                except:
-                                    pass
+                                except Exception:
+                                    pass  # driver.quit() 失败时静默，后续 _kill_stale_processes 兜底清理
                             # 清理残留进程
                             self._kill_stale_processes()
                             
