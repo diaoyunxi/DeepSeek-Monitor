@@ -169,7 +169,8 @@ class DeepSeekMonitor:
             if "deepseek" in title and "log in" not in title:
                 return True
             return False
-        except Exception:
+        except Exception as e:
+            logger.debug("登录状态检查异常: %s", e)
             return False
 
     def _perform_login(self) -> bool:
@@ -255,7 +256,8 @@ class DeepSeekMonitor:
                             elem.click()
                             
                             return True
-                except Exception:
+                except Exception as e:
+                    logger.debug("元素操作异常，跳过: %s", e)
                     continue
 
             # 备用方案：查找包含"password"或"密码"的元素
@@ -272,7 +274,8 @@ class DeepSeekMonitor:
                                 parent.click()
                                 
                                 return True
-                    except Exception:
+                    except Exception as e:
+                        logger.debug("元素操作异常，跳过: %s", e)
                         continue
 
             logger.warning("未找到密码登录按钮")
@@ -302,7 +305,8 @@ class DeepSeekMonitor:
                             if "log in" in text.lower() or "登录" in text:
                                 elem.click()
                                 return True
-                except Exception:
+                except Exception as e:
+                    logger.debug("元素操作异常，跳过: %s", e)
                     continue
 
             # 备用：点击最后一个可见的按钮
@@ -356,7 +360,8 @@ class DeepSeekMonitor:
                             conversations.append((title, url_id))
                             # 更新标题映射
                             self.conversation_titles[url_id] = title
-                    except Exception:
+                    except Exception as e:
+                        logger.debug("元素解析异常，跳过: %s", e)
                         # 如果找不到标题元素，跳过
                         continue
             else:
