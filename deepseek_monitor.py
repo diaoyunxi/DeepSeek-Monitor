@@ -261,13 +261,15 @@ class DeepSeekMonitor:
             for elem in all_elements:
                 text = elem.text.lower()
                 if "password" in text or "密码" in text:
-                    parent = elem.parent or elem
                     try:
-                        # 尝试点击父元素或祖父元素
+                        # 使用 XPath '..' 逐级向上查找可点击的父元素
+                        # 注意：Selenium WebElement 没有 .parent 属性（那是 lxml API），
+                        # 必须通过 find_element(By.XPATH, '..') 获取父节点
+                        current = elem
                         for _ in range(3):
-                            parent = parent.parent
-                            if parent and parent.is_displayed():
-                                parent.click()
+                            current = current.find_element(By.XPATH, '..')
+                            if current and current.is_displayed():
+                                current.click()
                                 
                                 return True
                     except Exception:
