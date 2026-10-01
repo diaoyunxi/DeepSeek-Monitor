@@ -10,6 +10,7 @@ DeepSeek 对话监控与命令执行工具
 import json
 import logging
 import subprocess
+from collections import OrderedDict
 from typing import Optional
 
 from selenium import webdriver
@@ -53,7 +54,8 @@ class DeepSeekMonitor:
         self.config = self._load_config(config_path)
         self.driver: Optional[webdriver.Chrome] = None
         self.last_conversations: set = set()  # 上一秒的对话集合（存储url_id）
-        self.processed_conversations: set = set()  # 已处理过的对话集合（存储url_id）
+        self.processed_conversations: OrderedDict = OrderedDict()  # 已处理对话（有上限，FIFO 淘汰）
+        self._processed_max = 10000  # 最多保留 10000 条已处理记录，防止内存无界增长
         self.is_first_run: bool = True  # 是否首次运行
         self.conversation_titles: dict = {}  # url_id -> title 的映射
         self.profile_dir = self.config.get("profile_dir", "./browser_profile")
@@ -167,7 +169,8 @@ class DeepSeekMonitor:
             if "deepseek" in title and "log in" not in title:
                 return True
             return False
-        except Exception:
+        except Exception as e:
+            logger.debug("登录状态检查异常: %s", e)
             return False
 
     def _perform_login(self) -> bool:
@@ -253,7 +256,8 @@ class DeepSeekMonitor:
                             elem.click()
                             
                             return True
-                except Exception:
+                except Exception as e:
+                    logger.debug("元素操作异常，跳过: %s", e)
                     continue
 
             # 备用方案：查找包含"password"或"密码"的元素
@@ -270,7 +274,8 @@ class DeepSeekMonitor:
                                 parent.click()
                                 
                                 return True
-                    except Exception:
+                    except Exception as e:
+                        logger.debug("元素操作异常，跳过: %s", e)
                         continue
 
             logger.warning("未找到密码登录按钮")
@@ -300,7 +305,8 @@ class DeepSeekMonitor:
                             if "log in" in text.lower() or "登录" in text:
                                 elem.click()
                                 return True
-                except Exception:
+                except Exception as e:
+                    logger.debug("元素操作异常，跳过: %s", e)
                     continue
 
             # 备用：点击最后一个可见的按钮
@@ -354,7 +360,8 @@ class DeepSeekMonitor:
                             conversations.append((title, url_id))
                             # 更新标题映射
                             self.conversation_titles[url_id] = title
-                    except Exception:
+                    except Exception as e:
+                        logger.debug("元素解析异常，跳过: %s", e)
                         # 如果找不到标题元素，跳过
                         continue
             else:
@@ -530,9 +537,30 @@ class DeepSeekMonitor:
             logger.warning(f"获取消息时出错: {e}")
             return None
 
+    # 允许执行的命令白名单（仅允许只读、无副作用的命令）
+    ALLOWED_COMMANDS = frozenset({
+        "ls", "cat", "head", "tail", "wc", "grep", "find", "du", "df",
+        "free", "uptime", "date", "whoami", "hostname", "uname", "pwd",
+        "ps", "top", "env", "echo", "which", "file", "stat",
+        "python3", "python", "pip", "pip3",
+        "git", "node", "npm", "npx",
+    })
+
+    # 禁止出现的 shell 操作符和危险模式
+    DANGEROUS_PATTERNS = (
+        "|", ";", "&&", "||", "`", "$(",
+        ">", "<", ">>", "<<",
+        "rm ", "mkfs", "dd ", "chmod", "chown",
+        "curl ", "wget ", "nc ", "ncat ",
+        "sudo ", "su ", "passwd",
+    )
+
     def _execute_bash_command(self, command: str) -> tuple:
         """
-        执行 bash 命令
+        执行 bash 命令（带白名单校验）
+
+        仅允许白名单内的只读命令执行，拒绝包含 shell 操作符或
+        危险模式的命令，防止通过聊天消息实施远程代码执行 (RCE)。
 
         Args:
             command: 要执行的命令
@@ -541,6 +569,21 @@ class DeepSeekMonitor:
             (stdout, stderr, returncode) 元组
         """
         logger.info(f"执行命令: {command}")
+
+        # 安全检查：拒绝包含危险 shell 操作符的命令
+        for pattern in self.DANGEROUS_PATTERNS:
+            if pattern in command:
+                msg = f"命令被拒绝：包含危险模式 '{pattern}'"
+                logger.warning(msg)
+                return "", f"[安全拒绝] {msg}", 1
+
+        # 安全检查：提取命令的基础程序名并校验白名单
+        base_cmd = command.strip().split()[0] if command.strip() else ""
+        if base_cmd not in self.ALLOWED_COMMANDS:
+            msg = f"命令被拒绝：'{base_cmd}' 不在允许的命令白名单中"
+            logger.warning(msg)
+            return "", f"[安全拒绝] {msg}（允许: {', '.join(sorted(self.ALLOWED_COMMANDS))}）", 1
+
         try:
             # 使用 bash -c 执行，确保参数正确传递
             result = subprocess.run(
@@ -744,12 +787,12 @@ class DeepSeekMonitor:
                         # 首次运行：缓存所有现有对话，不处理
                         logger.info(f"首次运行，缓存 {len(current_conversations)} 个现有对话")
                         self.last_conversations = set(url_id for _, url_id in current_conversations)
-                        self.processed_conversations = set(url_id for _, url_id in current_conversations)
+                        self.processed_conversations = OrderedDict.fromkeys(url_id for _, url_id in current_conversations)
                         self.is_first_run = False
                     else:
                         # 后续运行：只处理新增的对话（基于URL ID）
                         current_url_ids = set(url_id for _, url_id in current_conversations)
-                        new_url_ids = current_url_ids - self.last_conversations - self.processed_conversations
+                        new_url_ids = current_url_ids - self.last_conversations - set(self.processed_conversations.keys())
 
                         if new_url_ids:
                             # 找到新对话的标题
@@ -811,7 +854,10 @@ class DeepSeekMonitor:
                                         logger.info(f"对话 '{conv_title}' 不含 @ 命令，跳过")
 
                                     # 处理完标记为已处理，避免重复检查（使用URL ID）
-                                    self.processed_conversations.add(conv_url_id)
+                                    # 使用 OrderedDict 实现有上限的已处理集合，防止长时间运行内存泄漏
+                                    self.processed_conversations[conv_url_id] = True
+                                    if len(self.processed_conversations) > self._processed_max:
+                                        self.processed_conversations.popitem(last=False)  # FIFO: 淘汰最早记录
                                     logger.info(f"已标记对话为已处理: {conv_title} (ID: {conv_url_id})")
                         else:
                             logger.info("未检测到新对话")
