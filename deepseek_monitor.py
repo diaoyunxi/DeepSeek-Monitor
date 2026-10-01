@@ -254,6 +254,7 @@ class DeepSeekMonitor:
                             
                             return True
                 except Exception:
+                    logger.debug("元素操作失败，跳过当前尝试")
                     continue
 
             # 备用方案：查找包含"password"或"密码"的元素
@@ -271,6 +272,7 @@ class DeepSeekMonitor:
                                 
                                 return True
                     except Exception:
+                        logger.debug("元素操作失败，跳过当前尝试")
                         continue
 
             logger.warning("未找到密码登录按钮")
@@ -301,6 +303,7 @@ class DeepSeekMonitor:
                                 elem.click()
                                 return True
                 except Exception:
+                    logger.debug("元素操作失败，跳过当前尝试")
                     continue
 
             # 备用：点击最后一个可见的按钮
@@ -356,6 +359,7 @@ class DeepSeekMonitor:
                             self.conversation_titles[url_id] = title
                     except Exception:
                         # 如果找不到标题元素，跳过
+                        logger.debug("标题元素未找到，跳过")
                         continue
             else:
                 # 备用方案：从页面文本中提取
@@ -432,6 +436,7 @@ class DeepSeekMonitor:
                         
                         return True
                 except (NoSuchElementException, StaleElementReferenceException):
+                    logger.debug("元素操作失败，跳过当前尝试")
                     continue
 
             logger.warning(f"未找到对话: {title}")
