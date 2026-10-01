@@ -537,9 +537,30 @@ class DeepSeekMonitor:
             logger.warning(f"获取消息时出错: {e}")
             return None
 
+    # 允许执行的命令白名单（仅允许只读、无副作用的命令）
+    ALLOWED_COMMANDS = frozenset({
+        "ls", "cat", "head", "tail", "wc", "grep", "find", "du", "df",
+        "free", "uptime", "date", "whoami", "hostname", "uname", "pwd",
+        "ps", "top", "env", "echo", "which", "file", "stat",
+        "python3", "python", "pip", "pip3",
+        "git", "node", "npm", "npx",
+    })
+
+    # 禁止出现的 shell 操作符和危险模式
+    DANGEROUS_PATTERNS = (
+        "|", ";", "&&", "||", "`", "$(",
+        ">", "<", ">>", "<<",
+        "rm ", "mkfs", "dd ", "chmod", "chown",
+        "curl ", "wget ", "nc ", "ncat ",
+        "sudo ", "su ", "passwd",
+    )
+
     def _execute_bash_command(self, command: str) -> tuple:
         """
-        执行 bash 命令
+        执行 bash 命令（带白名单校验）
+
+        仅允许白名单内的只读命令执行，拒绝包含 shell 操作符或
+        危险模式的命令，防止通过聊天消息实施远程代码执行 (RCE)。
 
         Args:
             command: 要执行的命令
@@ -548,6 +569,21 @@ class DeepSeekMonitor:
             (stdout, stderr, returncode) 元组
         """
         logger.info(f"执行命令: {command}")
+
+        # 安全检查：拒绝包含危险 shell 操作符的命令
+        for pattern in self.DANGEROUS_PATTERNS:
+            if pattern in command:
+                msg = f"命令被拒绝：包含危险模式 '{pattern}'"
+                logger.warning(msg)
+                return "", f"[安全拒绝] {msg}", 1
+
+        # 安全检查：提取命令的基础程序名并校验白名单
+        base_cmd = command.strip().split()[0] if command.strip() else ""
+        if base_cmd not in self.ALLOWED_COMMANDS:
+            msg = f"命令被拒绝：'{base_cmd}' 不在允许的命令白名单中"
+            logger.warning(msg)
+            return "", f"[安全拒绝] {msg}（允许: {', '.join(sorted(self.ALLOWED_COMMANDS))}）", 1
+
         try:
             # 使用 bash -c 执行，确保参数正确传递
             result = subprocess.run(
