@@ -708,7 +708,7 @@ class DeepSeekMonitor:
                     return True
 
             except Exception as e:
-                pass
+                logger.debug(f"验证循环中忽略异常: {e}")
             time.sleep(check_interval)
 
         logger.warning(f"验证失败: 在{timeout}秒内未检测到发送成功的证据")
@@ -834,8 +834,8 @@ class DeepSeekMonitor:
                             if self.driver:
                                 try:
                                     self.driver.quit()
-                                except:
-                                    pass
+                                except Exception as cleanup_err:
+                                    logger.debug(f"清理 driver 时忽略异常: {cleanup_err}")
                             # 清理残留进程
                             self._kill_stale_processes()
                             
