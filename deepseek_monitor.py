@@ -10,20 +10,19 @@ DeepSeek 对话监控与命令执行工具
 import json
 import logging
 import subprocess
-from typing import Optional
 
 from selenium import webdriver
+from selenium.common.exceptions import (
+    NoSuchElementException,
+    StaleElementReferenceException,
+    TimeoutException,
+)
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import (
-    TimeoutException,
-    NoSuchElementException,
-    StaleElementReferenceException,
-)
+from selenium.webdriver.support.ui import WebDriverWait
 
 # 配置日志
 logging.basicConfig(
@@ -51,7 +50,7 @@ class DeepSeekMonitor:
             config_path: 配置文件路径，包含 phone、code 和 profile_dir
         """
         self.config = self._load_config(config_path)
-        self.driver: Optional[webdriver.Chrome] = None
+        self.driver: webdriver.Chrome | None = None
         self.last_conversations: set = set()  # 上一秒的对话集合（存储url_id）
         self.processed_conversations: set = set()  # 已处理过的对话集合（存储url_id）
         self.is_first_run: bool = True  # 是否首次运行
@@ -441,7 +440,7 @@ class DeepSeekMonitor:
             logger.error(f"点击对话时出错: {e}")
             return False
 
-    def _get_latest_message(self, fallback_title: str = "") -> Optional[str]:
+    def _get_latest_message(self, fallback_title: str = "") -> str | None:
         """
         获取当前对话最后一条 @ 命令
 
@@ -569,6 +568,7 @@ class DeepSeekMonitor:
         """
         try:
             import time
+
             from selenium.webdriver.common.action_chains import ActionChains
 
             # 记录发送前的URL，用于检测页面跳转
@@ -707,7 +707,8 @@ class DeepSeekMonitor:
                     logger.info("验证通过: 消息已发送成功")
                     return True
 
-            except Exception as e:
+            except Exception:
+                # 发送过程中读取页面元素可能偶发失败，忽略后继续轮询校验
                 pass
             time.sleep(check_interval)
 
@@ -834,7 +835,10 @@ class DeepSeekMonitor:
                             if self.driver:
                                 try:
                                     self.driver.quit()
-                                except:
+                                except Exception:
+                                    # 关闭旧浏览器驱动失败不应中断重连流程，
+                                    # 仅记录调试日志，避免静默吞掉异常
+                                    logger.debug("关闭旧浏览器驱动时出错", exc_info=True)
                                     pass
                             # 清理残留进程
                             self._kill_stale_processes()
