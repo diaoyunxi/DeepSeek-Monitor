@@ -9,6 +9,8 @@ DeepSeek 对话监控与命令执行工具
 
 import json
 import logging
+import os
+import signal
 import subprocess
 from typing import Optional
 
@@ -84,16 +86,48 @@ class DeepSeekMonitor:
 
     def _kill_stale_processes(self):
         """
-        杀死所有残留的 Chrome 和 ChromeDriver 进程
+        杀死本程序启动的 Chrome 和 ChromeDriver 进程
+        
+        通过 WebDriver 的 service.process.pid 精确终止本程序创建的进程，
+        避免杀死用户正在使用的 Chrome 浏览器。
         """
         try:
-            logger.info("正在清理残留的 Chrome 进程...")
-            # 杀死所有 chrome 和 chromedriver 进程
-            subprocess.run(
-                "pkill -9 -f 'chrome|chromedriver' 2>/dev/null || true",
-                shell=True,
-                capture_output=True
-            )
+            logger.info("正在清理本程序启动的 Chrome 进程...")
+            
+            # 如果 driver 存在，通过其 service 获取精确 PID 并终止
+            if self.driver and hasattr(self.driver, 'service'):
+                service = self.driver.service
+                if hasattr(service, 'process') and service.process:
+                    pid = service.process.pid
+                    if pid:
+                        try:
+                            # 先尝试优雅终止
+                            os.kill(pid, signal.SIGTERM)
+                            # 等待进程退出（最多 2 秒）
+                            for _ in range(20):
+                                try:
+                                    os.kill(pid, 0)  # 检查进程是否存在
+                                    import time
+                                    time.sleep(0.1)
+                                except ProcessLookupError:
+                                    break
+                            else:
+                                # 超时后强制终止
+                                os.kill(pid, signal.SIGKILL)
+                            logger.info(f"已终止 ChromeDriver 进程 (PID: {pid})")
+                        except ProcessLookupError:
+                            logger.debug(f"ChromeDriver 进程 (PID: {pid}) 已不存在")
+                        except Exception as e:
+                            logger.warning(f"终止 ChromeDriver 进程 (PID: {pid}) 时出错: {e}")
+            
+            # 如果 driver 存在，尝试通过 quit() 清理
+            if self.driver:
+                try:
+                    self.driver.quit()
+                except Exception as e:
+                    logger.debug(f"driver.quit() 时出错: {e}")
+                self.driver = None
+            
             logger.info("Chrome 进程清理完成")
         except Exception as e:
             logger.warning(f"清理进程时出错: {e}")
