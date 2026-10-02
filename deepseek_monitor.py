@@ -87,10 +87,13 @@ class DeepSeekMonitor:
         杀死所有残留的 Chrome 和 ChromeDriver 进程
         """
         try:
-            logger.info("正在清理残留的 Chrome 进程...")
-            # 杀死所有 chrome 和 chromedriver 进程
+            logger.info("正在清理本用户残留的 Chrome 进程...")
+            # 仅清理当前用户的 Chrome 进程，避免影响其他用户
+            # 使用 pgrep + kill 替代 pkill，限制作用域
+            import os
+            uid = os.getuid()
             subprocess.run(
-                "pkill -9 -f 'chrome|chromedriver' 2>/dev/null || true",
+                f"pgrep -u {uid} -f 'chrome|chromedriver' | xargs -r kill -9 2>/dev/null || true",
                 shell=True,
                 capture_output=True
             )
