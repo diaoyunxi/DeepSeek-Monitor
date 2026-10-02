@@ -238,11 +238,14 @@ class DeepSeekMonitor:
         """点击密码登录按钮"""
         try:
             # 查找"密码登录"或"Login with password"按钮
+            # 注意: Selenium 不支持 CSS :contains() 伪类，全部使用 XPath
             selectors = [
                 (By.XPATH, "//div[contains(@class, 'ds-button')]//span[contains(text(), '密码登录')]"),
                 (By.XPATH, "//div[contains(@class, 'ds-button')]//span[contains(text(), 'Login with password')]"),
-                (By.CSS_SELECTOR, ".ds-sign-in-form__social-link span:contains('密码登录')"),
-                (By.CSS_SELECTOR, ".ds-sign-in-form__social-link span:contains('Login with password')"),
+                (By.XPATH, "//span[contains(@class, 'social-link')]//span[contains(text(), '密码登录')]"),
+                (By.XPATH, "//span[contains(@class, 'social-link')]//span[contains(text(), 'Login with password')]"),
+                (By.XPATH, "//*[contains(text(), '密码登录')]"),
+                (By.XPATH, "//*[contains(text(), 'Login with password')]"),
             ]
 
             for selector in selectors:
@@ -256,22 +259,27 @@ class DeepSeekMonitor:
                 except Exception:
                     continue
 
-            # 备用方案：查找包含"password"或"密码"的元素
+            # 备用方案：查找包含"password"或"密码"的可点击父元素
+            # 修复 (CWE-682): WebElement 没有 .parent 属性，
+            # 使用 find_element(By.XPATH, "..") 获取父元素
             all_elements = self.driver.find_elements(By.TAG_NAME, "*")
             for elem in all_elements:
-                text = elem.text.lower()
-                if "password" in text or "密码" in text:
-                    parent = elem.parent or elem
-                    try:
+                try:
+                    text = elem.text.lower()
+                    if "password" in text or "密码" in text:
+                        current = elem
                         # 尝试点击父元素或祖父元素
                         for _ in range(3):
-                            parent = parent.parent
+                            try:
+                                parent = current.find_element(By.XPATH, "..")
+                            except Exception:
+                                break
                             if parent and parent.is_displayed():
                                 parent.click()
-                                
                                 return True
-                    except Exception:
-                        continue
+                            current = parent
+                except Exception:
+                    continue
 
             logger.warning("未找到密码登录按钮")
             return False
