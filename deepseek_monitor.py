@@ -84,17 +84,27 @@ class DeepSeekMonitor:
 
     def _kill_stale_processes(self):
         """
-        杀死所有残留的 Chrome 和 ChromeDriver 进程
+        仅杀死当前用户启动的 Chrome 和 ChromeDriver 进程，
+        避免影响同一台机器上其他用户或服务的浏览器实例。
         """
         try:
-            logger.info("正在清理残留的 Chrome 进程...")
-            # 杀死所有 chrome 和 chromedriver 进程
-            subprocess.run(
-                "pkill -9 -f 'chrome|chromedriver' 2>/dev/null || true",
-                shell=True,
-                capture_output=True
-            )
-            logger.info("Chrome 进程清理完成")
+            logger.info("正在清理当前用户的残留 Chrome 进程...")
+            import os, signal
+            uid = os.getuid()
+            killed = 0
+            for line in subprocess.check_output(
+                ["ps", "-eo", "pid,uid,comm"], text=True
+            ).splitlines():
+                parts = line.split()
+                if len(parts) >= 3 and parts[1] == str(uid):
+                    comm = parts[2]
+                    if "chrom" in comm.lower():
+                        try:
+                            os.kill(int(parts[0]), signal.SIGTERM)
+                            killed += 1
+                        except (ProcessLookupError, PermissionError):
+                            pass
+            logger.info(f"Chrome 进程清理完成，终止了 {killed} 个进程")
         except Exception as e:
             logger.warning(f"清理进程时出错: {e}")
 
