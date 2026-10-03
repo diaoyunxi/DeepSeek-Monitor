@@ -10,6 +10,8 @@ DeepSeek 对话监控与命令执行工具
 import json
 import logging
 import subprocess
+import time as _time
+from collections import OrderedDict
 from typing import Optional
 
 from selenium import webdriver
@@ -54,6 +56,8 @@ class DeepSeekMonitor:
         self.driver: Optional[webdriver.Chrome] = None
         self.last_conversations: set = set()  # 上一秒的对话集合（存储url_id）
         self.processed_conversations: set = set()  # 已处理过的对话集合（存储url_id）
+        self._processed_order: list = []  # 按处理时间排序的 url_id 列表，用于清理
+        self._max_processed: int = 5000  # 最大已处理对话数，防止内存无限增长
         self.is_first_run: bool = True  # 是否首次运行
         self.conversation_titles: dict = {}  # url_id -> title 的映射
         self.profile_dir = self.config.get("profile_dir", "./browser_profile")
@@ -811,7 +815,7 @@ class DeepSeekMonitor:
                                         logger.info(f"对话 '{conv_title}' 不含 @ 命令，跳过")
 
                                     # 处理完标记为已处理，避免重复检查（使用URL ID）
-                                    self.processed_conversations.add(conv_url_id)
+                                    self._mark_processed(conv_url_id)
                                     logger.info(f"已标记对话为已处理: {conv_title} (ID: {conv_url_id})")
                         else:
                             logger.info("未检测到新对话")
@@ -856,6 +860,15 @@ class DeepSeekMonitor:
             logger.error(f"监控过程中发生错误: {e}")
         finally:
             self.shutdown()
+
+    def _mark_processed(self, url_id: str) -> None:
+        """将对话标记为已处理，并在超出上限时淘汰最早记录"""
+        self.processed_conversations.add(url_id)
+        self._processed_order.append(url_id)
+        # 当已处理对话数超过上限，淘汰最早的记录
+        while len(self._processed_order) > self._max_processed:
+            oldest = self._processed_order.pop(0)
+            self.processed_conversations.discard(oldest)
 
     def shutdown(self):
         """关闭浏览器并清理资源"""
