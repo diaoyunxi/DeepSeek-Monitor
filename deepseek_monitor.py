@@ -530,9 +530,52 @@ class DeepSeekMonitor:
             logger.warning(f"获取消息时出错: {e}")
             return None
 
+    # 命令白名单：仅允许以下安全命令执行 (CWE-78)
+    ALLOWED_COMMANDS = frozenset({
+        "ls", "cat", "df", "ps", "uptime", "free", "head", "tail",
+        "grep", "wc", "date", "whoami", "id", "uname", "ifconfig",
+        "ip", "netstat", "ss", "du", "hostname", "pwd", "echo",
+        "which", "whereis", "file", "stat", "env", "printenv",
+    })
+
+    def _validate_command(self, command: str) -> tuple:
+        """
+        校验命令是否允许执行（白名单 + 元字符检查）
+
+        Returns:
+            (是否允许, 拒绝原因)
+        """
+        import re
+        if not command or not command.strip():
+            return False, "命令为空"
+
+        # 检查危险的 shell 元字符（管道、重定向、命令替换等）
+        blocked_meta = re.compile(r'[|;`$()>&<]')
+        if blocked_meta.search(command):
+            return False, "命令包含危险的特殊字符（管道/重定向/命令替换等），拒绝执行"
+
+        # 提取命令的首个 token
+        import shlex
+        try:
+            parts = shlex.split(command.strip())
+        except ValueError as e:
+            return False, f"命令解析失败: {e}"
+
+        if not parts:
+            return False, "命令为空"
+
+        # 获取基础命令名（去除路径前缀）
+        import os
+        cmd_name = os.path.basename(parts[0])
+
+        if cmd_name not in self.ALLOWED_COMMANDS:
+            return False, f"命令 '{cmd_name}' 不在安全白名单中，拒绝执行"
+
+        return True, ""
+
     def _execute_bash_command(self, command: str) -> tuple:
         """
-        执行 bash 命令
+        执行 bash 命令（带白名单校验）
 
         Args:
             command: 要执行的命令
@@ -540,6 +583,12 @@ class DeepSeekMonitor:
         Returns:
             (stdout, stderr, returncode) 元组
         """
+        # 安全校验：白名单 + 元字符检查
+        allowed, reason = self._validate_command(command)
+        if not allowed:
+            logger.warning(f"命令被拦截: {command}, 原因: {reason}")
+            return "", f"[命令被拒绝] {reason}", 1
+
         logger.info(f"执行命令: {command}")
         try:
             # 使用 bash -c 执行，确保参数正确传递
@@ -834,8 +883,8 @@ class DeepSeekMonitor:
                             if self.driver:
                                 try:
                                     self.driver.quit()
-                                except:
-                                    pass
+                                except Exception as e:
+                                    logger.debug(f"driver.quit() 清理异常: {e}")
                             # 清理残留进程
                             self._kill_stale_processes()
                             
