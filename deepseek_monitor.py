@@ -379,8 +379,8 @@ class DeepSeekMonitor:
                     import re
                     year_pattern = re.compile(r'^\d{4}[-/]\d{2}')
 
-                    for line in lines:
-                        line = line.strip()
+                    for raw_line in lines:
+                        line = raw_line.strip()
                         # 过滤条件
                         if not line:
                             continue
@@ -530,9 +530,19 @@ class DeepSeekMonitor:
             logger.warning(f"获取消息时出错: {e}")
             return None
 
+    # 危险命令模式：匹配常见破坏性操作 (CWE-78 防御)
+    _DANGEROUS_PATTERNS = [
+        r'\brm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+)*\s*/',        # rm -rf /
+        r'\bmkfs\b', r'\bdd\s+if=', r'\bchmod\s+-R\s+777\s+/',
+        r'\bshutdown\b', r'\breboot\b', r'\bhalt\b', r'\bpoweroff\b',
+        r':\(\)\s*\{',                                      # fork bomb
+        r'\bcurl\b.*\|\s*(ba)?sh',                          # curl pipe to shell
+        r'\bwget\b.*\|\s*(ba)?sh',                          # wget pipe to shell
+    ]
+
     def _execute_bash_command(self, command: str) -> tuple:
         """
-        执行 bash 命令
+        执行 bash 命令（带安全校验）
 
         Args:
             command: 要执行的命令
@@ -540,6 +550,17 @@ class DeepSeekMonitor:
         Returns:
             (stdout, stderr, returncode) 元组
         """
+        # 安全校验：拒绝危险命令 (CWE-78)
+        import re as _re
+        for pattern in self._DANGEROUS_PATTERNS:
+            if _re.search(pattern, command, _re.IGNORECASE):
+                logger.warning(f"拒绝危险命令: {command[:50]}...")
+                return "", f"安全限制：命令被拒绝（匹配危险模式）", 1
+
+        # 命令长度限制
+        if len(command) > 500:
+            return "", "安全限制：命令长度超过 500 字符", 1
+
         logger.info(f"执行命令: {command}")
         try:
             # 使用 bash -c 执行，确保参数正确传递
