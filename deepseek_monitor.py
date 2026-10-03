@@ -58,6 +58,9 @@ class DeepSeekMonitor:
         self.conversation_titles: dict = {}  # url_id -> title 的映射
         self.profile_dir = self.config.get("profile_dir", "./browser_profile")
         self.chrome_driver_path = "/usr/local/bin/chromedriver"
+        # 安全修复：授权发送者列表，仅允许指定对话标题触发命令执行 (CWE-862)
+        # 空列表表示允许所有发送者（向后兼容），非空时仅匹配的对话标题可执行命令
+        self.authorized_senders: list = self.config.get("authorized_senders", [])
 
     def _load_config(self, config_path: str) -> dict:
         """加载配置文件"""
@@ -763,6 +766,15 @@ class DeepSeekMonitor:
                                     message = self._get_latest_message(fallback_title=conv_title)
 
                                     if message and message.startswith("@"):
+                                        # 安全修复：校验发送者是否在授权列表中 (CWE-862)
+                                        if self.authorized_senders and conv_title not in self.authorized_senders:
+                                            logger.warning(
+                                                f"未授权的发送者 '{conv_title}' 尝试执行命令，已拒绝。"
+                                                f"授权列表: {self.authorized_senders}"
+                                            )
+                                            self.processed_conversations.add(conv_url_id)
+                                            continue
+
                                         # 提取命令
                                         command = message[1:].strip()  # 去掉 @ 符号
                                         logger.info(f"检测到 @ 命令: {command}")
