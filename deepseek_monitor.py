@@ -530,9 +530,12 @@ class DeepSeekMonitor:
             logger.warning(f"获取消息时出错: {e}")
             return None
 
+    # 命令输出最大字符数，超出截断防止内存耗尽或消息发送失败 (CWE-770)
+    MAX_OUTPUT_CHARS = 10_000
+
     def _execute_bash_command(self, command: str) -> tuple:
         """
-        执行 bash 命令
+        执行 bash 命令（含输出上限防护）
 
         Args:
             command: 要执行的命令
@@ -549,7 +552,14 @@ class DeepSeekMonitor:
                 text=True,
                 timeout=60  # 60秒超时
             )
-            return result.stdout, result.stderr, result.returncode
+            stdout = result.stdout
+            stderr = result.stderr
+            # 输出大小防护：截断过长输出防止内存耗尽 (CWE-770)
+            if len(stdout) > self.MAX_OUTPUT_CHARS:
+                stdout = stdout[:self.MAX_OUTPUT_CHARS] + f"\n...(输出已截断，原始长度 {len(result.stdout)} 字符)"
+            if len(stderr) > self.MAX_OUTPUT_CHARS:
+                stderr = stderr[:self.MAX_OUTPUT_CHARS] + f"\n...(stderr 已截断，原始长度 {len(result.stderr)} 字符)"
+            return stdout, stderr, result.returncode
         except subprocess.TimeoutExpired:
             logger.error(f"命令执行超时: {command}")
             return "", "命令执行超时", 1
