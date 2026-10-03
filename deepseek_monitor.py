@@ -241,8 +241,9 @@ class DeepSeekMonitor:
             selectors = [
                 (By.XPATH, "//div[contains(@class, 'ds-button')]//span[contains(text(), '密码登录')]"),
                 (By.XPATH, "//div[contains(@class, 'ds-button')]//span[contains(text(), 'Login with password')]"),
-                (By.CSS_SELECTOR, ".ds-sign-in-form__social-link span:contains('密码登录')"),
-                (By.CSS_SELECTOR, ".ds-sign-in-form__social-link span:contains('Login with password')"),
+                # 注意：Selenium 不支持 CSS :contains() 伪类，改用 XPath
+                (By.XPATH, "//div[contains(@class, 'ds-sign-in-form__social-link')]//span[contains(text(), '密码登录')]"),
+                (By.XPATH, "//div[contains(@class, 'ds-sign-in-form__social-link')]//span[contains(text(), 'Login with password')]"),
             ]
 
             for selector in selectors:
@@ -261,13 +262,15 @@ class DeepSeekMonitor:
             for elem in all_elements:
                 text = elem.text.lower()
                 if "password" in text or "密码" in text:
-                    parent = elem.parent or elem
                     try:
                         # 尝试点击父元素或祖父元素
+                        # 注意：Selenium WebElement 没有 .parent 属性，
+                        # 必须使用 XPath "./.." 获取父元素
+                        current = elem
                         for _ in range(3):
-                            parent = parent.parent
-                            if parent and parent.is_displayed():
-                                parent.click()
+                            current = current.find_element(By.XPATH, "./..")
+                            if current and current.is_displayed():
+                                current.click()
                                 
                                 return True
                     except Exception:
@@ -285,7 +288,8 @@ class DeepSeekMonitor:
         try:
             # 尝试多种选择器
             selectors = [
-                (By.CSS_SELECTOR, "div.ds-button[role='button']:has-text('Log in')"),
+                # 注意：Selenium 不支持 :has-text() 伪类（Playwright 扩展），改用 XPath
+                (By.XPATH, "//div[contains(@class, 'ds-button') and @role='button' and contains(text(), 'Log in')]"),
                 (By.XPATH, "//div[@role='button' and contains(text(), 'Log in')]"),
                 (By.XPATH, "//div[@role='button' and contains(text(), '登录')]"),
                 (By.CSS_SELECTOR, ".ds-button[role='button']"),
