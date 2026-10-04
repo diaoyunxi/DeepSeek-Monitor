@@ -711,7 +711,7 @@ class DeepSeekMonitor:
                     logger.info("验证通过: 消息已发送成功")
                     return True
 
-            except Exception as e:
+            except Exception:  # noqa: S110
                 pass
             time.sleep(check_interval)
 
@@ -838,7 +838,7 @@ class DeepSeekMonitor:
                             if self.driver:
                                 try:
                                     self.driver.quit()
-                                except:
+                                except Exception:  # noqa: S110
                                     pass
                             # 清理残留进程
                             self._kill_stale_processes()
