@@ -1,0 +1,16 @@
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "S", "RET", "RUF"]
+ignore = [
+    "S603",    # subprocess call with shell=False is safe
+    "S607",    # starting a process with a partial executable path
+    "S101",    # use of assert (acceptable in tests)
+    "S110",    # try-except-pass (annotated with noqa where intentional)
+    "E501",    # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["deepseek_monitor"]
