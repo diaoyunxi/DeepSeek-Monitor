@@ -71,7 +71,7 @@ class DeepSeekMonitor:
             login_type = config.get("login_type", "code")
             if login_type == "password" and "password" not in config:
                 raise ValueError("密码登录模式需要 password 字段")
-            elif login_type == "code" and "code" not in config:
+            if login_type == "code" and "code" not in config:
                 raise ValueError("验证码登录模式需要 code 字段")
             logger.info(f"成功加载配置文件: {config_path}")
             return config
@@ -253,7 +253,8 @@ class DeepSeekMonitor:
                             elem.click()
                             
                             return True
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"尝试密码输入方式失败: {e}")
                     continue
 
             # 备用方案：查找包含"password"或"密码"的元素
@@ -270,7 +271,8 @@ class DeepSeekMonitor:
                                 parent.click()
                                 
                                 return True
-                    except Exception:
+                    except Exception as e:
+                        logger.debug(f"查找密码登录按钮失败: {e}")
                         continue
 
             logger.warning("未找到密码登录按钮")
@@ -300,7 +302,8 @@ class DeepSeekMonitor:
                             if "log in" in text.lower() or "登录" in text:
                                 elem.click()
                                 return True
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"点击密码登录按钮失败: {e}")
                     continue
 
             # 备用：点击最后一个可见的按钮
@@ -354,7 +357,8 @@ class DeepSeekMonitor:
                             conversations.append((title, url_id))
                             # 更新标题映射
                             self.conversation_titles[url_id] = title
-                    except Exception:
+                    except Exception as e:
+                        logger.debug(f"读取对话标题失败: {e}")
                         # 如果找不到标题元素，跳过
                         continue
             else:
