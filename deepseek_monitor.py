@@ -88,10 +88,9 @@ class DeepSeekMonitor:
         """
         try:
             logger.info("正在清理残留的 Chrome 进程...")
-            # 杀死所有 chrome 和 chromedriver 进程
+            # 使用 shell=False + 参数列表避免命令注入
             subprocess.run(
-                "pkill -9 -f 'chrome|chromedriver' 2>/dev/null || true",
-                shell=True,
+                ["pkill", "-9", "-f", "chrome|chromedriver"],
                 capture_output=True
             )
             logger.info("Chrome 进程清理完成")
