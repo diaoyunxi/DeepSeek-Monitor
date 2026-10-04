@@ -254,6 +254,7 @@ class DeepSeekMonitor:
                             
                             return True
                 except Exception:
+                    logger.debug(f"跳过元素: {e}", exc_info=True)
                     continue
 
             # 备用方案：查找包含"password"或"密码"的元素
@@ -271,6 +272,7 @@ class DeepSeekMonitor:
                                 
                                 return True
                     except Exception:
+                        logger.debug(f"跳过元素: {e}", exc_info=True)
                         continue
 
             logger.warning("未找到密码登录按钮")
@@ -301,6 +303,7 @@ class DeepSeekMonitor:
                                 elem.click()
                                 return True
                 except Exception:
+                    logger.debug(f"跳过元素: {e}", exc_info=True)
                     continue
 
             # 备用：点击最后一个可见的按钮
