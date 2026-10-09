@@ -92,7 +92,8 @@ class DeepSeekMonitor:
             subprocess.run(
                 "pkill -9 -f 'chrome|chromedriver' 2>/dev/null || true",
                 shell=True,
-                capture_output=True
+                capture_output=True,
+                check=False  # pkill 无匹配进程时返回非零，属正常情况
             )
             logger.info("Chrome 进程清理完成")
         except Exception as e:
