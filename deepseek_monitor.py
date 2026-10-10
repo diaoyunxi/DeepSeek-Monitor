@@ -707,8 +707,8 @@ class DeepSeekMonitor:
                     logger.info("验证通过: 消息已发送成功")
                     return True
 
-            except Exception as e:
-                pass
+            except Exception:
+                logger.debug("验证轮询中发生异常", exc_info=True)
             time.sleep(check_interval)
 
         logger.warning(f"验证失败: 在{timeout}秒内未检测到发送成功的证据")
