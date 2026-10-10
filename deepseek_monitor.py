@@ -555,7 +555,7 @@ class DeepSeekMonitor:
             return "", "命令执行超时", 1
         except Exception as e:
             logger.error(f"命令执行出错: {e}")
-            return "", str(e), 1
+            return "", "命令执行出错", 1
 
     def _send_response(self, response_text: str) -> bool:
         """
