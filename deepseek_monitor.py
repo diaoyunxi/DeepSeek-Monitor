@@ -56,6 +56,7 @@ class DeepSeekMonitor:
         self.processed_conversations: set = set()  # 已处理过的对话集合（存储url_id）
         self.is_first_run: bool = True  # 是否首次运行
         self.conversation_titles: dict = {}  # url_id -> title 的映射
+        self._message_retry_counts: dict = {}  # url_id -> int: _get_latest_message 返回 None 时的重试计数
         self.profile_dir = self.config.get("profile_dir", "./browser_profile")
         self.chrome_driver_path = "/usr/local/bin/chromedriver"
 
@@ -810,8 +811,21 @@ class DeepSeekMonitor:
 
                                         logger.info(f"已处理并回复对话: {conv_title}")
                                     elif message is None:
-                                        # 获取消息时发生异常，不标记为已处理，留到下一轮重试
-                                        logger.warning(f"对话 '{conv_title}' 获取消息异常，本轮跳过")
+                                        # 获取消息时发生异常，累计重试次数；超过上限则标记为已处理，防止无限重试风暴
+                                        retry_count = self._message_retry_counts.get(conv_url_id, 0) + 1
+                                        self._message_retry_counts[conv_url_id] = retry_count
+                                        max_retries = 3
+                                        if retry_count >= max_retries:
+                                            logger.error(
+                                                f"对话 '{conv_title}' 获取消息连续失败 {retry_count} 次，"
+                                                f"标记为已处理以终止重试风暴"
+                                            )
+                                            self.processed_conversations.add(conv_url_id)
+                                            self._message_retry_counts.pop(conv_url_id, None)
+                                        else:
+                                            logger.warning(
+                                                f"对话 '{conv_title}' 获取消息异常（第 {retry_count}/{max_retries} 次），本轮跳过"
+                                            )
                                         continue
                                     else:
                                         # 返回空字符串表示已确认该对话不含 @ 命令
