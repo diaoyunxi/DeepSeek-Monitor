@@ -554,7 +554,13 @@ class DeepSeekMonitor:
                 text=True,
                 timeout=60  # 60秒超时
             )
-            return result.stdout, result.stderr, result.returncode
+            # 截断超长输出防止 WebSocket 发送失败和内存压力 (CWE-770)
+            MAX_OUTPUT_LENGTH = 50000
+            stdout = result.stdout[:MAX_OUTPUT_LENGTH] if result.stdout else ""
+            stderr = result.stderr[:MAX_OUTPUT_LENGTH] if result.stderr else ""
+            if result.stdout and len(result.stdout) > MAX_OUTPUT_LENGTH:
+                stdout += "\n... [输出已截断，总长度: {}]".format(len(result.stdout))
+            return stdout, stderr, result.returncode
         except subprocess.TimeoutExpired:
             logger.error(f"命令执行超时: {command}")
             return "", "命令执行超时", 1
