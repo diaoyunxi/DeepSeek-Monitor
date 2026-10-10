@@ -699,9 +699,12 @@ class DeepSeekMonitor:
 
                 # 检查文本是否出现在页面中
                 # 注意：多行消息在页面渲染后，空白（换行/空格）格式可能与原文不同
-                # （如段落间空行），因此先去除所有空白字符再做包含性比较
+                # 使用规范化空白（合并连续空白为单空格）而非去除全部空白，
+                # 避免 "helloworld" 误匹配 "hello world" 等假阳性
                 body_text = self.driver.find_element(By.TAG_NAME, "body").text
-                text_in_page = ''.join(expected_text.split()) in ''.join(body_text.split())
+                normalized_expected = ' '.join(expected_text.split())
+                normalized_body = ' '.join(body_text.split())
+                text_in_page = normalized_expected in normalized_body
 
                 # 验证成功条件：输入框清空 AND (文本在页面中 OR URL已变化)
                 if input_empty and (text_in_page or url_changed):
