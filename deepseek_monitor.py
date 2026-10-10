@@ -849,12 +849,12 @@ class DeepSeekMonitor:
                     if self.is_first_run:
                         # 首次运行：缓存所有现有对话，不处理
                         logger.info(f"首次运行，缓存 {len(current_conversations)} 个现有对话")
-                        self.last_conversations = set(url_id for _, url_id in current_conversations)
-                        self.processed_conversations = set(url_id for _, url_id in current_conversations)
+                        self.last_conversations = {url_id for _, url_id in current_conversations}
+                        self.processed_conversations = {url_id for _, url_id in current_conversations}
                         self.is_first_run = False
                     else:
                         # 后续运行：只处理新增的对话（基于URL ID）
-                        current_url_ids = set(url_id for _, url_id in current_conversations)
+                        current_url_ids = {url_id for _, url_id in current_conversations}
                         new_url_ids = current_url_ids - self.last_conversations - self.processed_conversations
 
                         if new_url_ids:
@@ -945,7 +945,7 @@ class DeepSeekMonitor:
                             logger.info("未检测到新对话")
 
                     # 更新上一秒的对话列表（存储URL ID）
-                    current_url_ids = set(url_id for _, url_id in current_conversations)
+                    current_url_ids = {url_id for _, url_id in current_conversations}
                     self.last_conversations = current_url_ids
 
                     # 清理 processed_conversations 中已不在当前列表的过期条目，防止无限增长
