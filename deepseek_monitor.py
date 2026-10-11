@@ -8,27 +8,26 @@ DeepSeek 对话监控与命令执行工具
 
 import argparse
 import json
-import signal
 import logging
 import re
 import shlex
+import signal
 import subprocess
-import time as _time
-from collections import OrderedDict
 from typing import Optional
 
 from selenium import webdriver
+from selenium.common.exceptions import (
+    NoSuchElementException,
+    StaleElementReferenceException,
+    TimeoutException,
+)
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import (
-    TimeoutException,
-    NoSuchElementException,
-    StaleElementReferenceException,
-)
+from selenium.webdriver.support.ui import WebDriverWait
+
 
 # 配置日志
 def setup_logging(level_name: str = "INFO"):
@@ -186,7 +185,7 @@ class DeepSeekMonitor:
             self.driver.get(LOGIN_URL)
 
             # 等待页面加载
-            
+
 
             # 检查是否已经登录
             if self._is_logged_in():
@@ -262,7 +261,7 @@ class DeepSeekMonitor:
             )
 
             # 额外等待页面加载
-            
+
 
             logger.info("登录成功！")
             return True
@@ -294,7 +293,7 @@ class DeepSeekMonitor:
                     for elem in elements:
                         if elem.is_displayed():
                             elem.click()
-                            
+
                             return True
                 except Exception:
                     logger.debug(f"跳过元素: {e}", exc_info=True)
@@ -314,7 +313,7 @@ class DeepSeekMonitor:
                             current = current.find_element(By.XPATH, "./..")
                             if current and current.is_displayed():
                                 current.click()
-                                
+
                                 return True
                     except Exception:
                         logger.debug(f"跳过元素: {e}", exc_info=True)
@@ -498,7 +497,7 @@ class DeepSeekMonitor:
         """
         try:
             # 等待页面稳定
-            
+
 
             # 查找所有可点击元素
             clickables = self.driver.find_elements(By.CSS_SELECTOR, '[role="button"], button, a, [class*="item"], li')
@@ -510,7 +509,7 @@ class DeepSeekMonitor:
                         elem.click()
                         logger.info(f"已点击对话: {title}")
                         # 等待页面加载
-                        
+
                         return True
                 except (NoSuchElementException, StaleElementReferenceException):
                     continue
@@ -684,6 +683,7 @@ class DeepSeekMonitor:
         """
         try:
             import time
+
             from selenium.webdriver.common.action_chains import ActionChains
 
             # 记录发送前的URL，用于检测页面跳转
@@ -977,7 +977,7 @@ class DeepSeekMonitor:
                                     logger.debug(f"driver.quit() 失败（可忽略）: {quit_err}")
                             # 清理残留进程
                             self._kill_stale_processes()
-                            
+
                             if self.login():
                                 logger.info("重新登录成功")
                                 reconnect_count = 0
