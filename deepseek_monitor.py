@@ -134,10 +134,9 @@ class DeepSeekMonitor:
             logger.info("正在清理残留的 Chrome 进程...")
             # 杀死所有 chrome 和 chromedriver 进程
             subprocess.run(
-                "pkill -9 -f 'chrome|chromedriver' 2>/dev/null || true",
-                shell=True,
+                ["pkill", "-9", "-f", "chrome|chromedriver"],
                 capture_output=True,
-                check=False  # pkill 无匹配进程时返回非零，属正常情况
+                check=False,  # pkill 无匹配进程时返回非零，属正常情况
             )
             logger.info("Chrome 进程清理完成")
         except Exception as e:
@@ -432,8 +431,9 @@ class DeepSeekMonitor:
                             conversations.append((title, url_id))
                             # 更新标题映射
                             self.conversation_titles[url_id] = title
-                    except Exception:
+                    except Exception as exc:
                         # 如果找不到标题元素，跳过
+                        logger.debug("获取标题元素失败: %s", exc)
                         continue
             else:
                 # 备用方案：从页面文本中提取
