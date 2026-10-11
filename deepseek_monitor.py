@@ -8,27 +8,28 @@ DeepSeek 对话监控与命令执行工具
 
 import argparse
 import json
-import signal
 import logging
 import re
 import shlex
+import signal
 import subprocess
 import time as _time
 from collections import OrderedDict
 from typing import Optional
 
 from selenium import webdriver
+from selenium.common.exceptions import (
+    NoSuchElementException,
+    StaleElementReferenceException,
+    TimeoutException,
+)
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import (
-    TimeoutException,
-    NoSuchElementException,
-    StaleElementReferenceException,
-)
+from selenium.webdriver.support.ui import WebDriverWait
+
 
 # 配置日志
 def setup_logging(level_name: str = "INFO"):
@@ -411,8 +412,8 @@ class DeepSeekMonitor:
                                     if candidate and len(candidate) > 0 and len(candidate) < 200:
                                         title = candidate
                                         break
-                            except Exception:
-                                pass
+                            except Exception as _e:
+                                logger.debug("获取对话标题元素失败: %s", _e)
 
                         # 策略3: 直接使用 link 的文本内容
                         if not title:
@@ -684,6 +685,7 @@ class DeepSeekMonitor:
         """
         try:
             import time
+
             from selenium.webdriver.common.action_chains import ActionChains
 
             # 记录发送前的URL，用于检测页面跳转
