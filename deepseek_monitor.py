@@ -13,8 +13,6 @@ import logging
 import re
 import shlex
 import subprocess
-import time as _time
-from collections import OrderedDict
 from typing import Optional
 
 from selenium import webdriver
