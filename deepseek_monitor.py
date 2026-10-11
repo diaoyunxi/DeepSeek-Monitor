@@ -354,7 +354,7 @@ class DeepSeekMonitor:
             # 备用：点击最后一个可见的按钮
             buttons = self.driver.find_elements(By.CSS_SELECTOR, "[role='button']")
             for btn in reversed(buttons):
-                if btn.is_displayed() and btn.is_enabled() and elem_text == title:
+                if btn.is_displayed() and btn.is_enabled():
                     btn.click()
                     return True
 
