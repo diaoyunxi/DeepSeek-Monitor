@@ -12,6 +12,7 @@ import signal
 import logging
 import re
 import shlex
+import shutil
 import subprocess
 import time as _time
 from collections import OrderedDict
@@ -90,7 +91,12 @@ class DeepSeekMonitor:
         self.conversation_titles: dict = {}  # url_id -> title 的映射
         self._message_retry_counts: dict = {}  # url_id -> int: _get_latest_message 返回 None 时的重试计数
         self.profile_dir = self.config.get("profile_dir", "./browser_profile")
-        self.chrome_driver_path = "/usr/local/bin/chromedriver"
+        # 安全修复：动态查找 chromedriver，支持配置文件覆盖，避免硬编码路径
+        self.chrome_driver_path = (
+            self.config.get("chrome_driver_path")
+            or shutil.which("chromedriver")
+            or "/usr/local/bin/chromedriver"
+        )
         # 安全修复：授权发送者列表，仅允许指定对话标题触发命令执行 (CWE-862)
         # 空列表表示允许所有发送者（向后兼容），非空时仅匹配的对话标题可执行命令
         self.authorized_senders: list = self.config.get("authorized_senders", [])
