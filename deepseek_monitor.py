@@ -8,27 +8,25 @@ DeepSeek 对话监控与命令执行工具
 
 import argparse
 import json
-import signal
 import logging
 import re
 import shlex
+import signal
 import subprocess
-import time as _time
-from collections import OrderedDict
-from typing import Optional
 
 from selenium import webdriver
+from selenium.common.exceptions import (
+    NoSuchElementException,
+    StaleElementReferenceException,
+    TimeoutException,
+)
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import (
-    TimeoutException,
-    NoSuchElementException,
-    StaleElementReferenceException,
-)
+from selenium.webdriver.support.ui import WebDriverWait
+
 
 # 配置日志
 def setup_logging(level_name: str = "INFO"):
@@ -81,7 +79,7 @@ class DeepSeekMonitor:
             config_path: 配置文件路径，包含 phone、code 和 profile_dir
         """
         self.config = self._load_config(config_path)
-        self.driver: Optional[webdriver.Chrome] = None
+        self.driver: webdriver.Chrome | None = None
         self.last_conversations: set = set()  # 上一秒的对话集合（存储url_id）
         self.processed_conversations: set = set()  # 已处理过的对话集合（存储url_id）
         self._processed_order: list = []  # 按处理时间排序的 url_id 列表，用于清理
@@ -98,7 +96,7 @@ class DeepSeekMonitor:
     def _load_config(self, config_path: str) -> dict:
         """加载配置文件"""
         try:
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(config_path, encoding="utf-8") as f:
                 config = json.load(f)
             # 验证必需字段：phone 必须存在且为非空字符串
             if "phone" not in config:
@@ -120,10 +118,10 @@ class DeepSeekMonitor:
             logger.info(f"成功加载配置文件: {config_path}")
             return config
         except FileNotFoundError:
-            logger.error(f"配置文件不存在: {config_path}")
+            logger.exception(f"配置文件不存在: {config_path}")
             raise
         except json.JSONDecodeError as e:
-            logger.error(f"配置文件 JSON 解析错误: {e}")
+            logger.exception(f"配置文件 JSON 解析错误: {e}")
             raise
 
     def _kill_stale_processes(self):
@@ -186,7 +184,7 @@ class DeepSeekMonitor:
             self.driver.get(LOGIN_URL)
 
             # 等待页面加载
-            
+
 
             # 检查是否已经登录
             if self._is_logged_in():
@@ -198,7 +196,7 @@ class DeepSeekMonitor:
             return self._perform_login()
 
         except Exception as e:
-            logger.error(f"登录过程中发生错误: {e}")
+            logger.exception(f"登录过程中发生错误: {e}")
             return False
 
     def _is_logged_in(self) -> bool:
@@ -262,19 +260,19 @@ class DeepSeekMonitor:
             )
 
             # 额外等待页面加载
-            
+
 
             logger.info("登录成功！")
             return True
 
         except TimeoutException:
-            logger.error("登录超时，请检查账号信息是否正确")
+            logger.exception("登录超时，请检查账号信息是否正确")
             return False
         except NoSuchElementException as e:
-            logger.error(f"找不到登录元素: {e}")
+            logger.exception(f"找不到登录元素: {e}")
             return False
         except Exception as e:
-            logger.error(f"登录过程中发生未知错误: {e}")
+            logger.exception(f"登录过程中发生未知错误: {e}")
             return False
 
     def _click_password_login(self) -> bool:
@@ -294,7 +292,7 @@ class DeepSeekMonitor:
                     for elem in elements:
                         if elem.is_displayed():
                             elem.click()
-                            
+
                             return True
                 except Exception:
                     logger.debug(f"跳过元素: {e}", exc_info=True)
@@ -314,7 +312,7 @@ class DeepSeekMonitor:
                             current = current.find_element(By.XPATH, "./..")
                             if current and current.is_displayed():
                                 current.click()
-                                
+
                                 return True
                     except Exception:
                         logger.debug(f"跳过元素: {e}", exc_info=True)
@@ -324,7 +322,7 @@ class DeepSeekMonitor:
             return False
 
         except Exception as e:
-            logger.error(f"点击密码登录按钮时出错: {e}")
+            logger.exception(f"点击密码登录按钮时出错: {e}")
             return False
 
     def _click_login_button(self) -> bool:
@@ -362,7 +360,7 @@ class DeepSeekMonitor:
             return False
 
         except Exception as e:
-            logger.error(f"点击登录按钮时出错: {e}")
+            logger.exception(f"点击登录按钮时出错: {e}")
             return False
 
     def _get_conversations(self) -> list:
@@ -498,7 +496,7 @@ class DeepSeekMonitor:
         """
         try:
             # 等待页面稳定
-            
+
 
             # 查找所有可点击元素
             clickables = self.driver.find_elements(By.CSS_SELECTOR, '[role="button"], button, a, [class*="item"], li')
@@ -510,7 +508,7 @@ class DeepSeekMonitor:
                         elem.click()
                         logger.info(f"已点击对话: {title}")
                         # 等待页面加载
-                        
+
                         return True
                 except (NoSuchElementException, StaleElementReferenceException):
                     continue
@@ -519,10 +517,10 @@ class DeepSeekMonitor:
             return False
 
         except Exception as e:
-            logger.error(f"点击对话时出错: {e}")
+            logger.exception(f"点击对话时出错: {e}")
             return False
 
-    def _get_latest_message(self, fallback_title: str = "") -> Optional[str]:
+    def _get_latest_message(self, fallback_title: str = "") -> str | None:
         """
         获取当前对话最后一条 @ 命令
 
@@ -663,13 +661,13 @@ class DeepSeekMonitor:
             stdout = result.stdout[:MAX_OUTPUT_LENGTH] if result.stdout else ""
             stderr = result.stderr[:MAX_OUTPUT_LENGTH] if result.stderr else ""
             if result.stdout and len(result.stdout) > MAX_OUTPUT_LENGTH:
-                stdout += "\n... [输出已截断，总长度: {}]".format(len(result.stdout))
+                stdout += f"\n... [输出已截断，总长度: {len(result.stdout)}]"
             return stdout, stderr, result.returncode
         except subprocess.TimeoutExpired:
-            logger.error(f"命令执行超时: {command}")
+            logger.exception(f"命令执行超时: {command}")
             return "", "命令执行超时", 1
         except Exception as e:
-            logger.error(f"命令执行出错: {e}")
+            logger.exception(f"命令执行出错: {e}")
             return "", "命令执行出错", 1
 
     def _send_response(self, response_text: str) -> bool:
@@ -684,6 +682,7 @@ class DeepSeekMonitor:
         """
         try:
             import time
+
             from selenium.webdriver.common.action_chains import ActionChains
 
             # 记录发送前的URL，用于检测页面跳转
@@ -711,7 +710,7 @@ class DeepSeekMonitor:
                 textarea.dispatchEvent(new Event('input', { bubbles: true }));
                 textarea.dispatchEvent(new Event('change', { bubbles: true }));
             """, input_box, response_text)
-            logger.info(f"文本已通过 JavaScript 设置（{len(response_text)} 字符）: {repr(response_text[:30])}...")
+            logger.info(f"文本已通过 JavaScript 设置（{len(response_text)} 字符）: {response_text[:30]!r}...")
 
             time.sleep(0.5)
 
@@ -733,7 +732,7 @@ class DeepSeekMonitor:
                         sent = True
                         logger.info("策略1成功")
                 except Exception as e:
-                    logger.error(f"策略1失败: {e}")
+                    logger.exception(f"策略1失败: {e}")
 
             # 策略2: 使用JavaScript触发keydown事件（备用）
             if not sent:
@@ -758,19 +757,18 @@ class DeepSeekMonitor:
                         sent = True
                         logger.info("策略2成功")
                 except Exception as e:
-                    logger.error(f"策略2失败: {e}")
+                    logger.exception(f"策略2失败: {e}")
 
             if sent:
                 logger.info("已发送回复")
                 return True
-            else:
-                logger.error("所有发送策略均失败")
-                return False
+            logger.error("所有发送策略均失败")
+            return False
 
         except Exception as e:
-            logger.error(f"发送回复时出错: {e}")
+            logger.exception(f"发送回复时出错: {e}")
             import traceback
-            logger.error(traceback.format_exc())
+            logger.exception(traceback.format_exc())
             return False
 
     def _verify_send_success(self, expected_text, url_before=None, timeout=5.0):
@@ -967,7 +965,7 @@ class DeepSeekMonitor:
                         logger.warning(f"浏览器会话失效，尝试重新登录... ({reconnect_count + 1}/{max_reconnect})")
                         reconnect_count += 1
                         if reconnect_count >= max_reconnect:
-                            logger.error("重连次数过多，退出程序")
+                            logger.exception("重连次数过多，退出程序")
                             break
                         try:
                             if self.driver:
@@ -977,12 +975,12 @@ class DeepSeekMonitor:
                                     logger.debug(f"driver.quit() 失败（可忽略）: {quit_err}")
                             # 清理残留进程
                             self._kill_stale_processes()
-                            
+
                             if self.login():
                                 logger.info("重新登录成功")
                                 reconnect_count = 0
                         except Exception as reconnect_err:
-                            logger.error(f"重新登录失败: {reconnect_err}")
+                            logger.exception(f"重新登录失败: {reconnect_err}")
                     else:
                         logger.warning(f"监控过程中出错: {e}")
 
@@ -993,7 +991,7 @@ class DeepSeekMonitor:
         except KeyboardInterrupt:
             logger.info("收到中断信号，正在关闭...")
         except Exception as e:
-            logger.error(f"监控过程中发生错误: {e}")
+            logger.exception(f"监控过程中发生错误: {e}")
         finally:
             self.shutdown()
 
