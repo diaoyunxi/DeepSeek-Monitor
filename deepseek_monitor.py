@@ -13,7 +13,7 @@ import logging
 import re
 import shlex
 import subprocess
-import time as _time
+import time
 from collections import OrderedDict
 from typing import Optional
 
@@ -296,7 +296,7 @@ class DeepSeekMonitor:
                             elem.click()
                             
                             return True
-                except Exception:
+                except Exception as e:
                     logger.debug(f"跳过元素: {e}", exc_info=True)
                     continue
 
@@ -316,7 +316,7 @@ class DeepSeekMonitor:
                                 current.click()
                                 
                                 return True
-                    except Exception:
+                    except Exception as e:
                         logger.debug(f"跳过元素: {e}", exc_info=True)
                         continue
 
@@ -347,14 +347,15 @@ class DeepSeekMonitor:
                             if "log in" in text.lower() or "登录" in text:
                                 elem.click()
                                 return True
-                except Exception:
+                except Exception as e:
                     logger.debug(f"跳过元素: {e}", exc_info=True)
                     continue
 
             # 备用：点击最后一个可见的按钮
             buttons = self.driver.find_elements(By.CSS_SELECTOR, "[role='button']")
             for btn in reversed(buttons):
-                if btn.is_displayed() and btn.is_enabled() and elem_text == title:
+                btn_text = btn.text.strip().lower()
+                if btn.is_displayed() and btn.is_enabled() and ("log in" in btn_text or "登录" in btn_text):
                     btn.click()
                     return True
 
