@@ -296,7 +296,7 @@ class DeepSeekMonitor:
                             elem.click()
                             
                             return True
-                except Exception:
+                except Exception as e:
                     logger.debug(f"跳过元素: {e}", exc_info=True)
                     continue
 
@@ -316,7 +316,7 @@ class DeepSeekMonitor:
                                 current.click()
                                 
                                 return True
-                    except Exception:
+                    except Exception as e:
                         logger.debug(f"跳过元素: {e}", exc_info=True)
                         continue
 
@@ -347,7 +347,7 @@ class DeepSeekMonitor:
                             if "log in" in text.lower() or "登录" in text:
                                 elem.click()
                                 return True
-                except Exception:
+                except Exception as e:
                     logger.debug(f"跳过元素: {e}", exc_info=True)
                     continue
 
