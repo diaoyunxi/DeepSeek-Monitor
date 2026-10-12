@@ -210,7 +210,8 @@ class DeepSeekMonitor:
             # 尝试获取页面标题或内容判断
             title = self.driver.title.lower()
             return "deepseek" in title and "log in" not in title
-        except Exception:
+        except Exception as e:
+            logger.debug("检查登录状态失败: %s", e)
             return False
 
     def _perform_login(self) -> bool:
@@ -411,8 +412,8 @@ class DeepSeekMonitor:
                                     if candidate and len(candidate) > 0 and len(candidate) < 200:
                                         title = candidate
                                         break
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.debug("获取对话标题失败: %s", e)
 
                         # 策略3: 直接使用 link 的文本内容
                         if not title:
@@ -432,8 +433,9 @@ class DeepSeekMonitor:
                             conversations.append((title, url_id))
                             # 更新标题映射
                             self.conversation_titles[url_id] = title
-                    except Exception:
-                        # 如果找不到标题元素，跳过
+                    except Exception as e:
+                        # 如果找不到标题元素，记录并跳过
+                        logger.debug("查找对话标题失败: %s", e)
                         continue
             else:
                 # 备用方案：从页面文本中提取
@@ -820,8 +822,8 @@ class DeepSeekMonitor:
                     logger.info("验证通过: 消息已发送成功")
                     return True
 
-            except Exception:
-                logger.debug("验证轮询中发生异常", exc_info=True)
+            except Exception as e:
+                logger.debug("验证轮询中发生异常: %s", e, exc_info=True)
             time.sleep(check_interval)
 
         logger.warning(f"验证失败: 在{timeout}秒内未检测到发送成功的证据")
@@ -925,6 +927,8 @@ class DeepSeekMonitor:
                                             time.sleep(2)
 
                                         logger.info(f"已处理并回复对话: {conv_title}")
+                                        # 成功处理后重置重试计数，防止字典无限增长
+                                        self._message_retry_counts.pop(conv_url_id, None)
                                     elif message is None:
                                         # 获取消息时发生异常，累计重试次数；超过上限则标记为已处理，防止无限重试风暴
                                         retry_count = self._message_retry_counts.get(conv_url_id, 0) + 1
@@ -958,6 +962,10 @@ class DeepSeekMonitor:
 
                     # 清理 processed_conversations 中已不在当前列表的过期条目，防止无限增长
                     self.processed_conversations &= current_url_ids
+                    # 同步清理重试计数字典中已不在当前列表的过期条目，防止长期运行内存泄漏
+                    stale_keys = set(self._message_retry_counts) - current_url_ids
+                    for k in stale_keys:
+                        self._message_retry_counts.pop(k, None)
                     reconnect_count = 0  # 重置重连计数
 
                 except Exception as e:
