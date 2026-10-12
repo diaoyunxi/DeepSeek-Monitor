@@ -927,6 +927,8 @@ class DeepSeekMonitor:
                                             time.sleep(2)
 
                                         logger.info(f"已处理并回复对话: {conv_title}")
+                                        # 成功处理后重置重试计数，防止字典无限增长
+                                        self._message_retry_counts.pop(conv_url_id, None)
                                     elif message is None:
                                         # 获取消息时发生异常，累计重试次数；超过上限则标记为已处理，防止无限重试风暴
                                         retry_count = self._message_retry_counts.get(conv_url_id, 0) + 1
@@ -960,6 +962,10 @@ class DeepSeekMonitor:
 
                     # 清理 processed_conversations 中已不在当前列表的过期条目，防止无限增长
                     self.processed_conversations &= current_url_ids
+                    # 同步清理重试计数字典中已不在当前列表的过期条目，防止长期运行内存泄漏
+                    stale_keys = set(self._message_retry_counts) - current_url_ids
+                    for k in stale_keys:
+                        self._message_retry_counts.pop(k, None)
                     reconnect_count = 0  # 重置重连计数
 
                 except Exception as e:
