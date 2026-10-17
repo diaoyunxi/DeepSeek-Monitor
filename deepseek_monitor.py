@@ -89,6 +89,7 @@ class DeepSeekMonitor:
         self.is_first_run: bool = True  # 是否首次运行
         self.conversation_titles: dict = {}  # url_id -> title 的映射
         self._message_retry_counts: dict = {}  # url_id -> int: _get_latest_message 返回 None 时的重试计数
+        self._pending_retry: set = set()  # url_id: 上一轮获取消息失败，下一轮需要重试（不被 last_conversations 吸收）
         self.profile_dir = self.config.get("profile_dir", "./browser_profile")
         self.chrome_driver_path = "/usr/local/bin/chromedriver"
         # 安全修复：授权发送者列表，仅允许指定对话标题触发命令执行 (CWE-862)
@@ -864,6 +865,9 @@ class DeepSeekMonitor:
                         # 后续运行：只处理新增的对话（基于URL ID）
                         current_url_ids = {url_id for _, url_id in current_conversations}
                         new_url_ids = current_url_ids - self.last_conversations - self.processed_conversations
+                        # 上一轮获取消息失败的对话仍需重试：即便它已被 last_conversations
+                        # 视为「已知」，也应在下一轮重新取消息，直到成功或达到重试上限。
+                        new_url_ids = (new_url_ids | self._pending_retry) & current_url_ids
 
                         if new_url_ids:
                             # 找到新对话的标题
@@ -937,10 +941,13 @@ class DeepSeekMonitor:
                                             )
                                             self.processed_conversations.add(conv_url_id)
                                             self._message_retry_counts.pop(conv_url_id, None)
+                                            self._pending_retry.discard(conv_url_id)
                                         else:
                                             logger.warning(
                                                 f"对话 '{conv_title}' 获取消息异常（第 {retry_count}/{max_retries} 次），本轮跳过"
                                             )
+                                            # 标记为待重试：下一轮即使 last_conversations 已含它也会被重新处理
+                                            self._pending_retry.add(conv_url_id)
                                         continue
                                     else:
                                         # 返回空字符串表示已确认该对话不含 @ 命令
@@ -1000,6 +1007,7 @@ class DeepSeekMonitor:
     def _mark_processed(self, url_id: str) -> None:
         """将对话标记为已处理，并在超出上限时淘汰最早记录"""
         self.processed_conversations.add(url_id)
+        self._pending_retry.discard(url_id)  # 已成功处理，不再需要重试
         self._processed_order.append(url_id)
         # 当已处理对话数超过上限，淘汰最早的记录
         while len(self._processed_order) > self._max_processed:
