@@ -53,11 +53,6 @@ logger = logging.getLogger(__name__)
 # DeepSeek 登录页面 URL
 LOGIN_URL = "https://chat.deepseek.com/"
 
-# 允许执行的命令白名单（安全加固）
-ALLOWED_COMMANDS = {"ls", "cat", "echo", "date", "whoami", "pwd", "uname", "df", "free", "uptime"}
-
-
-
 # ── 命令白名单（安全策略）──────────────────────────────────────
 # 仅允许以下安全命令执行，其他命令一律拒绝，防止远程任意代码执行（CWE-78）
 ALLOWED_COMMANDS = frozenset({
