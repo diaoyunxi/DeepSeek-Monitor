@@ -81,7 +81,7 @@ class DeepSeekMonitor:
             config_path: 配置文件路径，包含 phone、code 和 profile_dir
         """
         self.config = self._load_config(config_path)
-        self.driver: Optional[webdriver.Chrome] = None
+        self.driver: webdriver.Chrome | None = None
         self.last_conversations: set = set()  # 上一秒的对话集合（存储url_id）
         self.processed_conversations: set = set()  # 已处理过的对话集合（存储url_id）
         self._processed_order: list = []  # 按处理时间排序的 url_id 列表，用于清理
@@ -522,7 +522,7 @@ class DeepSeekMonitor:
             logger.error(f"点击对话时出错: {e}")
             return False
 
-    def _get_latest_message(self, fallback_title: str = "") -> Optional[str]:
+    def _get_latest_message(self, fallback_title: str = "") -> str | None:
         """
         获取当前对话最后一条 @ 命令
 

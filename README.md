@@ -72,6 +72,7 @@ pip install -r requirements.txt
 | `code` | 验证码模式必填 | 登录验证码 |
 | `password` | 密码模式必填 | 登录密码 |
 | `profile_dir` | ❌ | 浏览器 profile 目录，默认 `./browser_profile` |
+| `authorized_senders` | ❌ | 授权发送者列表（对话标题），仅允许列表中的发送者执行命令。为空时不限制。示例：`["张三", "李四"]` |
 
 **重要**：`config.json` 已在 `.gitignore` 中排除，请勿提交到版本库。
 
