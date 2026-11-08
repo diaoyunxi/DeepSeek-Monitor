@@ -1,3 +1,5 @@
+> [← 返回文档目录](../README.md) ｜ 原文件：`CONTRIBUTING.md`。
+
 # Contributing
 
 Thank you for your interest in contributing!
@@ -22,7 +24,7 @@ Thank you for your interest in contributing!
 
 - Use GitHub Issues to report bugs
 - Include steps to reproduce, expected behavior, and actual behavior
-- For security vulnerabilities, see [SECURITY.md](SECURITY.md)
+- For security vulnerabilities, see [SECURITY.md](security.md)
 
 ## Pull Request Guidelines
 
@@ -30,4 +32,3 @@ Thank you for your interest in contributing!
 - Update documentation if applicable
 - Ensure all existing tests pass
 - Add tests for new functionality when possible
-
