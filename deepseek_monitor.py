@@ -120,10 +120,10 @@ class DeepSeekMonitor:
             logger.info(f"成功加载配置文件: {config_path}")
             return config
         except FileNotFoundError:
-            logger.error(f"配置文件不存在: {config_path}")
+            logger.exception(f"配置文件不存在: {config_path}")
             raise
         except json.JSONDecodeError as e:
-            logger.error(f"配置文件 JSON 解析错误: {e}")
+            logger.exception(f"配置文件 JSON 解析错误: {e}")
             raise
 
     def _kill_stale_processes(self):
@@ -198,7 +198,7 @@ class DeepSeekMonitor:
             return self._perform_login()
 
         except Exception as e:
-            logger.error(f"登录过程中发生错误: {e}")
+            logger.exception(f"登录过程中发生错误: {e}")
             return False
 
     def _is_logged_in(self) -> bool:
@@ -210,7 +210,7 @@ class DeepSeekMonitor:
             # 尝试获取页面标题或内容判断
             title = self.driver.title.lower()
             return "deepseek" in title and "log in" not in title
-        except Exception:
+        except Exception as e:
             return False
 
     def _perform_login(self) -> bool:
@@ -268,13 +268,13 @@ class DeepSeekMonitor:
             return True
 
         except TimeoutException:
-            logger.error("登录超时，请检查账号信息是否正确")
+            logger.exception("登录超时，请检查账号信息是否正确")
             return False
         except NoSuchElementException as e:
-            logger.error(f"找不到登录元素: {e}")
+            logger.exception(f"找不到登录元素: {e}")
             return False
         except Exception as e:
-            logger.error(f"登录过程中发生未知错误: {e}")
+            logger.exception(f"登录过程中发生未知错误: {e}")
             return False
 
     def _click_password_login(self) -> bool:
@@ -324,7 +324,7 @@ class DeepSeekMonitor:
             return False
 
         except Exception as e:
-            logger.error(f"点击密码登录按钮时出错: {e}")
+            logger.exception(f"点击密码登录按钮时出错: {e}")
             return False
 
     def _click_login_button(self) -> bool:
@@ -362,7 +362,7 @@ class DeepSeekMonitor:
             return False
 
         except Exception as e:
-            logger.error(f"点击登录按钮时出错: {e}")
+            logger.exception(f"点击登录按钮时出错: {e}")
             return False
 
     def _get_conversations(self) -> list:
@@ -411,7 +411,7 @@ class DeepSeekMonitor:
                                     if candidate and len(candidate) > 0 and len(candidate) < 200:
                                         title = candidate
                                         break
-                            except Exception:
+                            except Exception as e:
                                 pass
 
                         # 策略3: 直接使用 link 的文本内容
@@ -432,7 +432,7 @@ class DeepSeekMonitor:
                             conversations.append((title, url_id))
                             # 更新标题映射
                             self.conversation_titles[url_id] = title
-                    except Exception:
+                    except Exception as e:
                         # 如果找不到标题元素，跳过
                         continue
             else:
@@ -519,7 +519,7 @@ class DeepSeekMonitor:
             return False
 
         except Exception as e:
-            logger.error(f"点击对话时出错: {e}")
+            logger.exception(f"点击对话时出错: {e}")
             return False
 
     def _get_latest_message(self, fallback_title: str = "") -> Optional[str]:
@@ -666,10 +666,10 @@ class DeepSeekMonitor:
                 stdout += "\n... [输出已截断，总长度: {}]".format(len(result.stdout))
             return stdout, stderr, result.returncode
         except subprocess.TimeoutExpired:
-            logger.error(f"命令执行超时: {command}")
+            logger.exception(f"命令执行超时: {command}")
             return "", "命令执行超时", 1
         except Exception as e:
-            logger.error(f"命令执行出错: {e}")
+            logger.exception(f"命令执行出错: {e}")
             return "", "命令执行出错", 1
 
     def _send_response(self, response_text: str) -> bool:
@@ -733,7 +733,7 @@ class DeepSeekMonitor:
                         sent = True
                         logger.info("策略1成功")
                 except Exception as e:
-                    logger.error(f"策略1失败: {e}")
+                    logger.exception(f"策略1失败: {e}")
 
             # 策略2: 使用JavaScript触发keydown事件（备用）
             if not sent:
@@ -758,7 +758,7 @@ class DeepSeekMonitor:
                         sent = True
                         logger.info("策略2成功")
                 except Exception as e:
-                    logger.error(f"策略2失败: {e}")
+                    logger.exception(f"策略2失败: {e}")
 
             if sent:
                 logger.info("已发送回复")
@@ -768,9 +768,9 @@ class DeepSeekMonitor:
                 return False
 
         except Exception as e:
-            logger.error(f"发送回复时出错: {e}")
+            logger.exception(f"发送回复时出错: {e}")
             import traceback
-            logger.error(traceback.format_exc())
+            logger.exception(traceback.format_exc())
             return False
 
     def _verify_send_success(self, expected_text, url_before=None, timeout=5.0):
@@ -967,7 +967,7 @@ class DeepSeekMonitor:
                         logger.warning(f"浏览器会话失效，尝试重新登录... ({reconnect_count + 1}/{max_reconnect})")
                         reconnect_count += 1
                         if reconnect_count >= max_reconnect:
-                            logger.error("重连次数过多，退出程序")
+                            logger.exception("重连次数过多，退出程序")
                             break
                         try:
                             if self.driver:
@@ -982,7 +982,7 @@ class DeepSeekMonitor:
                                 logger.info("重新登录成功")
                                 reconnect_count = 0
                         except Exception as reconnect_err:
-                            logger.error(f"重新登录失败: {reconnect_err}")
+                            logger.exception(f"重新登录失败: {reconnect_err}")
                     else:
                         logger.warning(f"监控过程中出错: {e}")
 
@@ -993,7 +993,7 @@ class DeepSeekMonitor:
         except KeyboardInterrupt:
             logger.info("收到中断信号，正在关闭...")
         except Exception as e:
-            logger.error(f"监控过程中发生错误: {e}")
+            logger.exception(f"监控过程中发生错误: {e}")
         finally:
             self.shutdown()
 
