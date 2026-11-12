@@ -763,9 +763,8 @@ class DeepSeekMonitor:
             if sent:
                 logger.info("已发送回复")
                 return True
-            else:
-                logger.error("所有发送策略均失败")
-                return False
+            logger.error("所有发送策略均失败")
+            return False
 
         except Exception as e:
             logger.error(f"发送回复时出错: {e}")
