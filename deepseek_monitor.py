@@ -67,7 +67,7 @@ ALLOWED_COMMANDS = frozenset({
 })
 
 # 禁止的 shell 元字符（管道、重定向、命令替换等），防止命令注入
-_BLOCKED_META_PATTERN = re.compile(r"[|;\`\$()>&<]")
+_BLOCKED_META_PATTERN = re.compile(r"[|;\`\$()>&<\n\r]")
 
 
 class DeepSeekMonitor:
