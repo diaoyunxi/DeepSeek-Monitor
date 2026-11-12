@@ -654,6 +654,7 @@ class DeepSeekMonitor:
             # 使用 bash -c 执行，确保参数正确传递
             result = subprocess.run(
                 ['bash', '-c', command],
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=60  # 60秒超时
