@@ -13,7 +13,7 @@ import logging
 import re
 import shlex
 import subprocess
-import time as _time
+import time
 from collections import OrderedDict
 from typing import Optional
 
@@ -296,7 +296,7 @@ class DeepSeekMonitor:
                             elem.click()
                             
                             return True
-                except Exception:
+                except Exception as e:
                     logger.debug(f"跳过元素: {e}", exc_info=True)
                     continue
 
@@ -316,7 +316,7 @@ class DeepSeekMonitor:
                                 current.click()
                                 
                                 return True
-                    except Exception:
+                    except Exception as e:
                         logger.debug(f"跳过元素: {e}", exc_info=True)
                         continue
 
@@ -347,7 +347,7 @@ class DeepSeekMonitor:
                             if "log in" in text.lower() or "登录" in text:
                                 elem.click()
                                 return True
-                except Exception:
+                except Exception as e:
                     logger.debug(f"跳过元素: {e}", exc_info=True)
                     continue
 
@@ -820,7 +820,7 @@ class DeepSeekMonitor:
                     logger.info("验证通过: 消息已发送成功")
                     return True
 
-            except Exception:
+            except Exception as e:
                 logger.debug("验证轮询中发生异常", exc_info=True)
             time.sleep(check_interval)
 
