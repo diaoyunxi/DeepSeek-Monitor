@@ -8,28 +8,27 @@ DeepSeek 对话监控与命令执行工具
 
 import argparse
 import json
-import signal
 import logging
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import time
-from collections import OrderedDict
-from typing import Optional
 
 from selenium import webdriver
+from selenium.common.exceptions import (
+    NoSuchElementException,
+    StaleElementReferenceException,
+    TimeoutException,
+)
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import (
-    TimeoutException,
-    NoSuchElementException,
-    StaleElementReferenceException,
-)
+from selenium.webdriver.support.ui import WebDriverWait
+
 
 # 配置日志
 def setup_logging(level_name: str = "INFO"):
@@ -58,14 +57,35 @@ LOGIN_URL = "https://chat.deepseek.com/"
 ALLOWED_COMMANDS = {"ls", "cat", "echo", "date", "whoami", "pwd", "uname", "df", "free", "uptime"}
 
 
-
 # ── 命令白名单（安全策略）──────────────────────────────────────
 # 仅允许以下安全命令执行，其他命令一律拒绝，防止远程任意代码执行（CWE-78）
-ALLOWED_COMMANDS = frozenset({
-    "ls", "cat", "df", "ps", "uptime", "free", "head", "tail",
-    "grep", "wc", "date", "whoami", "id", "uname", "ifconfig",
-    "ip", "netstat", "ss", "top", "du", "echo", "pwd", "hostname",
-})
+ALLOWED_COMMANDS = frozenset(
+    {
+        "ls",
+        "cat",
+        "df",
+        "ps",
+        "uptime",
+        "free",
+        "head",
+        "tail",
+        "grep",
+        "wc",
+        "date",
+        "whoami",
+        "id",
+        "uname",
+        "ifconfig",
+        "ip",
+        "netstat",
+        "ss",
+        "top",
+        "du",
+        "echo",
+        "pwd",
+        "hostname",
+    }
+)
 
 # 禁止的 shell 元字符（管道、重定向、命令替换等），防止命令注入
 _BLOCKED_META_PATTERN = re.compile(r"[|;\`\$()>&<\n\r]")
@@ -82,7 +102,7 @@ class DeepSeekMonitor:
             config_path: 配置文件路径，包含 phone、code 和 profile_dir
         """
         self.config = self._load_config(config_path)
-        self.driver: Optional[webdriver.Chrome] = None
+        self.driver: webdriver.Chrome | None = None
         self.last_conversations: set = set()  # 上一秒的对话集合（存储url_id）
         self.processed_conversations: set = set()  # 已处理过的对话集合（存储url_id）
         self._processed_order: list = []  # 按处理时间排序的 url_id 列表，用于清理
@@ -94,9 +114,7 @@ class DeepSeekMonitor:
         self.profile_dir = self.config.get("profile_dir", "./browser_profile")
         # 安全修复：动态查找 chromedriver，支持配置文件覆盖，避免硬编码路径
         self.chrome_driver_path = (
-            self.config.get("chrome_driver_path")
-            or shutil.which("chromedriver")
-            or "/usr/local/bin/chromedriver"
+            self.config.get("chrome_driver_path") or shutil.which("chromedriver") or "/usr/local/bin/chromedriver"
         )
         # 安全修复：授权发送者列表，仅允许指定对话标题触发命令执行 (CWE-862)
         # 空列表表示允许所有发送者（向后兼容），非空时仅匹配的对话标题可执行命令
@@ -105,7 +123,7 @@ class DeepSeekMonitor:
     def _load_config(self, config_path: str) -> dict:
         """加载配置文件"""
         try:
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(config_path, encoding="utf-8") as f:
                 config = json.load(f)
             # 验证必需字段：phone 必须存在且为非空字符串
             if "phone" not in config:
@@ -192,7 +210,6 @@ class DeepSeekMonitor:
             self.driver.get(LOGIN_URL)
 
             # 等待页面加载
-            
 
             # 检查是否已经登录
             if self._is_logged_in():
@@ -231,9 +248,7 @@ class DeepSeekMonitor:
             login_type = self.config.get("login_type", "code")  # "password" 或 "code"
 
             # 等待登录表单加载
-            WebDriverWait(self.driver, 15).until(
-                EC.presence_of_element_located((By.TAG_NAME, "input"))
-            )
+            WebDriverWait(self.driver, 15).until(EC.presence_of_element_located((By.TAG_NAME, "input")))
 
             # 如果是密码登录，先点击"密码登录"按钮
             if login_type == "password":
@@ -263,12 +278,9 @@ class DeepSeekMonitor:
             self._click_login_button()
 
             # 等待登录完成
-            WebDriverWait(self.driver, 30).until(
-                lambda d: "sign_in" not in d.current_url.lower()
-            )
+            WebDriverWait(self.driver, 30).until(lambda d: "sign_in" not in d.current_url.lower())
 
             # 额外等待页面加载
-            
 
             logger.info("登录成功！")
             return True
@@ -290,8 +302,15 @@ class DeepSeekMonitor:
             selectors = [
                 (By.XPATH, "//div[contains(@class, 'ds-button')]//span[contains(text(), '密码登录')]"),
                 (By.XPATH, "//div[contains(@class, 'ds-button')]//span[contains(text(), 'Login with password')]"),
-                (By.XPATH, "//div[contains(@class, 'ds-sign-in-form__social-link')]//span[contains(text(), '密码登录')]"),
-                (By.XPATH, "//div[contains(@class, 'ds-sign-in-form__social-link')]//span[contains(text(), 'Login with password')]"),
+                (
+                    By.XPATH,
+                    "//div[contains(@class, 'ds-sign-in-form__social-link')]//span[contains(text(), '密码登录')]",
+                ),
+                (
+                    By.XPATH,
+                    "//div[contains(@class, 'ds-sign-in-form__social-link')]"
+                    "//span[contains(text(), 'Login with password')]",
+                ),
             ]
 
             for selector in selectors:
@@ -300,7 +319,7 @@ class DeepSeekMonitor:
                     for elem in elements:
                         if elem.is_displayed():
                             elem.click()
-                            
+
                             return True
                 except Exception as e:
                     logger.debug(f"跳过元素: {e}", exc_info=True)
@@ -320,7 +339,7 @@ class DeepSeekMonitor:
                             current = current.find_element(By.XPATH, "./..")
                             if current and current.is_displayed():
                                 current.click()
-                                
+
                                 return True
                     except Exception as e:
                         logger.debug(f"跳过元素: {e}", exc_info=True)
@@ -382,13 +401,9 @@ class DeepSeekMonitor:
         try:
             # 等待页面完全加载
 
-
             # 获取页面源代码，使用更精确的选择器
             # 对话链接：class="_546d736" 且包含 href="/a/chat/s/"
-            conversation_links = self.driver.find_elements(
-                By.CSS_SELECTOR,
-                "a[href*='/a/chat/s/']"
-            )
+            conversation_links = self.driver.find_elements(By.CSS_SELECTOR, "a[href*='/a/chat/s/']")
 
             if conversation_links:
                 for link in conversation_links:
@@ -417,21 +432,25 @@ class DeepSeekMonitor:
                                     if candidate and len(candidate) > 0 and len(candidate) < 200:
                                         title = candidate
                                         break
-                            except Exception:
-                                pass
+                            except Exception as exc:
+                                logger.debug("策略2 提取标题候选失败: %s", exc)
 
                         # 策略3: 直接使用 link 的文本内容
                         if not title:
                             title = link.text.strip()
 
                         # 提取URL中的对话ID
-                        href = link.get_attribute('href')
-                        url_id = href.split('/')[-1] if href else ''
+                        href = link.get_attribute("href")
+                        url_id = href.split("/")[-1] if href else ""
 
                         # 如果 url_id 提取失败，生成唯一 ID 而非使用标题（防止同名对话碰撞）
                         if not url_id:
                             import hashlib
-                            url_id = f"title_{hashlib.md5((title + str(len(conversations))).encode(), usedforsecurity=False).hexdigest()[:12]}"
+
+                            digest = hashlib.md5(
+                                (title + str(len(conversations))).encode(), usedforsecurity=False
+                            ).hexdigest()
+                            url_id = f"title_{digest[:12]}"
                             logger.debug(f"URL ID 提取失败，生成备用 ID: {url_id} (标题: {title})")
 
                         if title and len(title) > 0:
@@ -448,21 +467,41 @@ class DeepSeekMonitor:
 
                 if body_text:
                     # 按行分割
-                    lines = body_text.split('\n')
+                    lines = body_text.split("\n")
 
                     # 过滤出有效的对话标题
                     exclude_words = [
-                        '发送', '登录', '密码', '验证码', 'Terms', 'Privacy',
-                        'New chat', 'Start chatting', 'Instant', 'Expert',
-                        'Vision', 'DeepThink', 'Search', 'AI-generated',
-                        'for reference only', 'Continue', 'Contact us',
-                        'Today', 'Yesterday', '7 Days', '30 Days',
-                        '14 Days', '21 Days', 'Last 7 days', 'Last 30 days'
+                        "发送",
+                        "登录",
+                        "密码",
+                        "验证码",
+                        "Terms",
+                        "Privacy",
+                        "New chat",
+                        "Start chatting",
+                        "Instant",
+                        "Expert",
+                        "Vision",
+                        "DeepThink",
+                        "Search",
+                        "AI-generated",
+                        "for reference only",
+                        "Continue",
+                        "Contact us",
+                        "Today",
+                        "Yesterday",
+                        "7 Days",
+                        "30 Days",
+                        "14 Days",
+                        "21 Days",
+                        "Last 7 days",
+                        "Last 30 days",
                     ]
 
                     # 过滤年份开头的内容（如 "2026-07", "2026-06"）
                     import re
-                    year_pattern = re.compile(r'^\d{4}[-/]\d{2}')
+
+                    year_pattern = re.compile(r"^\d{4}[-/]\d{2}")
 
                     for raw_line in lines:
                         line = raw_line.strip()
@@ -474,9 +513,9 @@ class DeepSeekMonitor:
                         if any(word in line for word in exclude_words):
                             continue
                         # 排除明显的非对话内容
-                        if line.startswith('@') or line.startswith('#'):
+                        if line.startswith("@") or line.startswith("#"):
                             continue
-                        if 'http' in line.lower():
+                        if "http" in line.lower():
                             continue
                         # 排除年份标签
                         if year_pattern.match(line):
@@ -484,7 +523,11 @@ class DeepSeekMonitor:
 
                         # 备用方案：生成唯一 ID 防止同名碰撞
                         import hashlib
-                        fallback_id = f"body_{hashlib.md5((line + str(len(conversations))).encode(), usedforsecurity=False).hexdigest()[:12]}"
+
+                        digest = hashlib.md5(
+                            (line + str(len(conversations))).encode(), usedforsecurity=False
+                        ).hexdigest()
+                        fallback_id = f"body_{digest[:12]}"
                         conversations.append((line, fallback_id))
 
             return conversations
@@ -505,7 +548,6 @@ class DeepSeekMonitor:
         """
         try:
             # 等待页面稳定
-            
 
             # 查找所有可点击元素
             clickables = self.driver.find_elements(By.CSS_SELECTOR, '[role="button"], button, a, [class*="item"], li')
@@ -517,7 +559,7 @@ class DeepSeekMonitor:
                         elem.click()
                         logger.info(f"已点击对话: {title}")
                         # 等待页面加载
-                        
+
                         return True
                 except (NoSuchElementException, StaleElementReferenceException):
                     continue
@@ -529,7 +571,7 @@ class DeepSeekMonitor:
             logger.error(f"点击对话时出错: {e}")
             return False
 
-    def _get_latest_message(self, fallback_title: str = "") -> Optional[str]:
+    def _get_latest_message(self, fallback_title: str = "") -> str | None:
         """
         获取当前对话最后一条 @ 命令
 
@@ -546,10 +588,9 @@ class DeepSeekMonitor:
             返回 None 表示发生异常需重试
         """
         try:
-            WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.TAG_NAME, "body"))
-            )
+            WebDriverWait(self.driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
             import time
+
             time.sleep(0.5)
 
             message = self.driver.execute_script("""
@@ -559,7 +600,11 @@ class DeepSeekMonitor:
                     var t = text.trim();
                     var afterAt = t.slice(1).trim();
                     if (afterAt.length === 0 || afterAt.length >= 200) return false;
-                    if (/^(?:帮我|请|需要|可以|怎么|如何|为什么|怎样|介绍|说明|解释|显示|列出|查看|运行|执行|打开|创建|新建|生成|输出|返回|使用|调用|方法|格式|写法|示例|例子)/.test(afterAt)) return false;
+                    if (/^(?:帮我|请|需要|可以|怎么|如何|为什么)/.test(afterAt) ||
+                        /^(?:怎样|介绍|说明|解释|显示|列出|查看)/.test(afterAt) ||
+                        /^(?:运行|执行|打开|创建|新建|生成|输出)/.test(afterAt) ||
+                        /^(?:返回|使用|调用|方法|格式|写法|示例)/.test(afterAt) ||
+                        /^例子/.test(afterAt)) return false;
                     if (/^[\u4e00-\u9fa5]/.test(afterAt)) return false;
                     if (/^<system/i.test(t)) return false;
                     return true;
@@ -604,11 +649,11 @@ class DeepSeekMonitor:
             """)
 
             if message:
-                message = ' '.join(message.split())
+                message = " ".join(message.split())
                 logger.info(f"获取到命令消息（长度: {len(message)}）: {message[:80]}")
                 return message
 
-            if fallback_title and fallback_title.startswith('@'):
+            if fallback_title and fallback_title.startswith("@"):
                 logger.info(f"DOM 未找到命令消息，使用对话标题作为回退: {fallback_title}")
                 return fallback_title
 
@@ -660,18 +705,18 @@ class DeepSeekMonitor:
         try:
             # 使用 bash -c 执行，确保参数正确传递
             result = subprocess.run(
-                ['bash', '-c', command],
+                ["bash", "-c", command],
                 check=False,
                 capture_output=True,
                 text=True,
-                timeout=60  # 60秒超时
+                timeout=60,  # 60秒超时
             )
             # 截断超长输出防止 WebSocket 发送失败和内存压力 (CWE-770)
             MAX_OUTPUT_LENGTH = 50000
             stdout = result.stdout[:MAX_OUTPUT_LENGTH] if result.stdout else ""
             stderr = result.stderr[:MAX_OUTPUT_LENGTH] if result.stderr else ""
             if result.stdout and len(result.stdout) > MAX_OUTPUT_LENGTH:
-                stdout += "\n... [输出已截断，总长度: {}]".format(len(result.stdout))
+                stdout += f"\n... [输出已截断，总长度: {len(result.stdout)}]"
             return stdout, stderr, result.returncode
         except subprocess.TimeoutExpired:
             logger.error(f"命令执行超时: {command}")
@@ -692,6 +737,7 @@ class DeepSeekMonitor:
         """
         try:
             import time
+
             from selenium.webdriver.common.action_chains import ActionChains
 
             # 记录发送前的URL，用于检测页面跳转
@@ -709,8 +755,9 @@ class DeepSeekMonitor:
             # 通过 JS 设置 value 后触发 input + change 事件，确保 Vue 双向绑定正确更新。
             # 注意：必须使用 Object.getOwnPropertyDescriptor 获取原生 setter，
             # 否则 Vue 的自定义 setter 可能拦截不到值变更。
-            response_text = response_text.replace('\r\n', '\n').replace('\r', '\n')
-            self.driver.execute_script("""
+            response_text = response_text.replace("\r\n", "\n").replace("\r", "\n")
+            self.driver.execute_script(
+                """
                 const textarea = arguments[0];
                 const text = arguments[1];
                 const nativeSetter = Object.getOwnPropertyDescriptor(
@@ -718,8 +765,11 @@ class DeepSeekMonitor:
                 nativeSetter.call(textarea, text);
                 textarea.dispatchEvent(new Event('input', { bubbles: true }));
                 textarea.dispatchEvent(new Event('change', { bubbles: true }));
-            """, input_box, response_text)
-            logger.info(f"文本已通过 JavaScript 设置（{len(response_text)} 字符）: {repr(response_text[:30])}...")
+            """,
+                input_box,
+                response_text,
+            )
+            logger.info(f"文本已通过 JavaScript 设置（{len(response_text)} 字符）: {response_text[:30]!r}...")
 
             time.sleep(0.5)
 
@@ -771,13 +821,13 @@ class DeepSeekMonitor:
             if sent:
                 logger.info("已发送回复")
                 return True
-            else:
-                logger.error("所有发送策略均失败")
-                return False
+            logger.error("所有发送策略均失败")
+            return False
 
         except Exception as e:
             logger.error(f"发送回复时出错: {e}")
             import traceback
+
             logger.error(traceback.format_exc())
             return False
 
@@ -798,7 +848,6 @@ class DeepSeekMonitor:
         Returns:
             验证是否成功
         """
-        import time
 
         start_time = time.time()
         check_interval = 0.3
@@ -807,22 +856,22 @@ class DeepSeekMonitor:
             try:
                 # 检查输入框是否为空
                 current_input = self.driver.find_element(By.CSS_SELECTOR, "textarea[name='search']")
-                current_value = current_input.get_attribute('value')
-                input_empty = not current_value or current_value.strip() == ''
+                current_value = current_input.get_attribute("value")
+                input_empty = not current_value or current_value.strip() == ""
 
                 # 检查URL是否变化（新建对话）
                 url_changed = False
                 if url_before:
                     current_url = self.driver.current_url
-                    url_changed = (url_before != current_url and '/a/chat/s/' in current_url)
+                    url_changed = url_before != current_url and "/a/chat/s/" in current_url
 
                 # 检查文本是否出现在页面中
                 # 注意：多行消息在页面渲染后，空白（换行/空格）格式可能与原文不同
                 # 使用规范化空白（合并连续空白为单空格）而非去除全部空白，
                 # 避免 "helloworld" 误匹配 "hello world" 等假阳性
                 body_text = self.driver.find_element(By.TAG_NAME, "body").text
-                normalized_expected = ' '.join(expected_text.split())
-                normalized_body = ' '.join(body_text.split())
+                normalized_expected = " ".join(expected_text.split())
+                normalized_body = " ".join(body_text.split())
                 text_in_page = normalized_expected in normalized_body
 
                 # 验证成功条件：输入框清空 AND (文本在页面中 OR URL已变化)
@@ -830,7 +879,7 @@ class DeepSeekMonitor:
                     logger.info("验证通过: 消息已发送成功")
                     return True
 
-            except Exception as e:
+            except Exception:
                 logger.debug("验证轮询中发生异常", exc_info=True)
             time.sleep(check_interval)
 
@@ -880,7 +929,9 @@ class DeepSeekMonitor:
 
                         if new_url_ids:
                             # 找到新对话的标题
-                            new_conversations = [(title, url_id) for title, url_id in current_conversations if url_id in new_url_ids]
+                            new_conversations = [
+                                (title, url_id) for title, url_id in current_conversations if url_id in new_url_ids
+                            ]
                             logger.info(f"发现 {len(new_conversations)} 个新对话")
 
                             for conv_title, conv_url_id in new_conversations[:3]:  # 限制处理最多3个新对话
@@ -926,7 +977,9 @@ class DeepSeekMonitor:
                                             # 执行失败：回复 stderr；
                                             # 无错误输出时回复“执行失败: no output”，保留失败状态说明
                                             response = f"执行失败: {stderr_text if stderr_text else 'no output'}"
-                                        logger.info(f"执行结果预览: {response[:100]}{'...' if len(response) > 100 else ''}")
+                                        logger.info(
+                                            f"执行结果预览: {response[:100]}{'...' if len(response) > 100 else ''}"
+                                        )
 
                                         # 发送回复
                                         send_result = self._send_response(response)
@@ -935,6 +988,7 @@ class DeepSeekMonitor:
                                         if send_result:
                                             # 等待2秒，确保回复已提交
                                             import time
+
                                             time.sleep(2)
 
                                         logger.info(f"已处理并回复对话: {conv_title}")
@@ -953,7 +1007,8 @@ class DeepSeekMonitor:
                                             self._pending_retry.discard(conv_url_id)
                                         else:
                                             logger.warning(
-                                                f"对话 '{conv_title}' 获取消息异常（第 {retry_count}/{max_retries} 次），本轮跳过"
+                                                f"对话 '{conv_title}' 获取消息异常"
+                                                f"（第 {retry_count}/{max_retries} 次），本轮跳过"
                                             )
                                             # 标记为待重试：下一轮即使 last_conversations 已含它也会被重新处理
                                             self._pending_retry.add(conv_url_id)
@@ -979,7 +1034,11 @@ class DeepSeekMonitor:
                 except Exception as e:
                     # 处理浏览器会话失效等错误
                     error_msg = str(e)
-                    if "invalid session id" in error_msg or "session deleted" in error_msg or "session not created" in error_msg:
+                    if (
+                        "invalid session id" in error_msg
+                        or "session deleted" in error_msg
+                        or "session not created" in error_msg
+                    ):
                         logger.warning(f"浏览器会话失效，尝试重新登录... ({reconnect_count + 1}/{max_reconnect})")
                         reconnect_count += 1
                         if reconnect_count >= max_reconnect:
@@ -993,7 +1052,7 @@ class DeepSeekMonitor:
                                     logger.debug(f"driver.quit() 失败（可忽略）: {quit_err}")
                             # 清理残留进程
                             self._kill_stale_processes()
-                            
+
                             if self.login():
                                 logger.info("重新登录成功")
                                 reconnect_count = 0
@@ -1004,6 +1063,7 @@ class DeepSeekMonitor:
 
                 # 短暂等待后继续
                 import time
+
                 time.sleep(5)  # 每5秒检查一次，避免频繁刷新页面
 
         except KeyboardInterrupt:
@@ -1036,12 +1096,13 @@ class DeepSeekMonitor:
         self._kill_stale_processes()
 
 
-
 def _graceful_shutdown(signum, frame):
     """优雅关闭：清理浏览器资源后退出"""
     logger.info("Received shutdown signal, cleaning up...")
     import sys
+
     sys.exit(0)
+
 
 signal.signal(signal.SIGTERM, _graceful_shutdown)
 signal.signal(signal.SIGINT, _graceful_shutdown)
